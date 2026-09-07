@@ -1,7 +1,7 @@
 import { Chess } from 'chess.js';
 import type { Attempt } from './contracts';
 export const shareText = (attempt: Attempt, number: number) =>
-  `Solved today's Chesscape within ${((attempt.elapsedMs ?? 0) / 1000).toFixed(2)} seconds. ♟\nChesscape No. ${String(number).padStart(3, '0')} · ${attempt.day}\nFind your escape → https://lowkey.tools/chesscape`;
+  `Solved ${attempt.day === new Date(attempt.updatedAt).toISOString().slice(0, 10) ? "today's" : 'my'} Chesscape within ${((attempt.elapsedMs ?? 0) / 1000).toFixed(2)} seconds. ♟\nChesscape No. ${String(number).padStart(3, '0')} · ${attempt.day}\nFind your escape → https://lowkey.tools/chesscape`;
 export async function createShareImage(
   attempt: Attempt,
   number: number,
@@ -25,7 +25,7 @@ export async function createShareImage(
   ctx.font = '21px Arial';
   ctx.fillStyle = '#728168';
   ctx.fillText(
-    `No. ${String(number).padStart(3, '0')}  ·  ${attempt.day}  ·  SERVER-TIMED`,
+    `No. ${String(number).padStart(3, '0')}  ·  ${attempt.day}  ·  KING SAFE`,
     500,
     340,
   );

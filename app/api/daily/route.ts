@@ -1,48 +1,74 @@
 import { database } from '@/server/database';
 import {
   getDaily,
-  currentAttempt,
-  publicAttempt,
-  statistics,
+  publicPuzzle,
   utcDay,
-  nextDay,
+  type DailyRow,
 } from '@/server/service';
-import { json, player } from '@/server/http';
+import type { PuzzlePayload } from '@/lib/contracts';
+
+// Puzzle responses contain no player data and can be shared across visitors.
+const cached = new Map<string, Promise<PuzzlePayload>>();
 export async function GET(request: Request) {
+  const today = utcDay();
+  const requested = new URL(request.url).searchParams.get('day');
+  const day = requested ?? today;
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
+    !Number.isFinite(Date.parse(day)) ||
+    utcDay(Date.parse(day)) !== day ||
+    day > today
+  )
+    return Response.json(
+      { error: 'That puzzle date is not available.' },
+      { status: 400, headers: { 'Cache-Control': 'no-store' } },
+    );
   try {
-    const db = database();
-    const existing = player(request);
-    const client = existing ?? crypto.randomUUID();
-    const day = utcDay();
-    const puzzle = await getDaily(db, day);
-    const row = await currentAttempt(db, client, day);
-    return json(
-      request,
-      {
-        day,
-        number: Math.max(
-          1,
-          Math.floor((Date.parse(day) - Date.parse('2026-09-01')) / 86400000) +
-            1,
-        ),
-        escapeCount: puzzle.escape_count,
-        source: puzzle.source,
-        resetsAt: nextDay(day),
-        attempt: row ? publicAttempt(row, puzzle) : null,
-        stats: await statistics(db, client),
+    let loading = cached.get(day);
+    if (!loading) {
+      loading = (async () => {
+        const db = database();
+        const row =
+          day === today
+            ? await getDaily(db, day)
+            : await db
+                .prepare('SELECT * FROM daily WHERE day=?')
+                .bind(day)
+                .first<DailyRow>();
+        if (!row) throw new Error('PUZZLE_NOT_FOUND');
+        return publicPuzzle(row);
+      })();
+      cached.set(day, loading);
+      if (cached.size > 32) cached.delete(cached.keys().next().value!);
+    }
+    const puzzle = await loading;
+    // Browser state is local; only this shared puzzle crosses the network once.
+    const ttl =
+      day === today
+        ? Math.max(0, Math.floor((puzzle.resetsAt - Date.now()) / 1000))
+        : 86400;
+    return Response.json(puzzle, {
+      headers: {
+        'Cache-Control': `public, max-age=0, s-maxage=${ttl}`,
+        'X-Content-Type-Options': 'nosniff',
       },
-      200,
-      existing ? undefined : client,
-    );
+    });
   } catch (error) {
-    console.error(
-      'Daily unavailable',
-      error instanceof Error ? error.message : 'unknown',
-    );
-    return json(
-      request,
-      { error: 'The daily escape is taking a moment. Please try again.' },
-      503,
+    cached.delete(day);
+    const missing =
+      error instanceof Error && error.message === 'PUZZLE_NOT_FOUND';
+    if (!missing)
+      console.error(
+        'Daily unavailable',
+        error instanceof Error ? error.message : 'unknown',
+      );
+    return Response.json(
+      {
+        error: missing
+          ? 'Your saved puzzle is unavailable. Please try again later.'
+          : 'Could not load your escape. Please try again.',
+      },
+      { status: missing ? 404 : 503, headers: { 'Cache-Control': 'no-store' } },
     );
   }
 }

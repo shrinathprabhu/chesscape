@@ -1,19 +1,24 @@
-import type { Attempt, DailyChallenge } from './contracts';
-async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: body ? 'POST' : 'GET',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = (await response.json()) as T & { error?: string };
+import type { PuzzlePayload } from './contracts';
+export async function getChallenge(day?: string): Promise<PuzzlePayload> {
+  const response = await fetch(
+    '/api/daily' + (day ? '?day=' + encodeURIComponent(day) : ''),
+    {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+  const data = (await response.json()) as PuzzlePayload & { error?: string };
   if (!response.ok)
-    throw new Error(data.error ?? 'Could not connect. Please try again.');
+    throw new Error(
+      data.error ?? 'Could not load your puzzle. Please try again.',
+    );
+  if (
+    !data.fen ||
+    !Array.isArray(data.solutions) ||
+    !data.solutions.length ||
+    !data.refutations
+  )
+    throw new Error('The puzzle could not be loaded. Please refresh.');
   return data;
 }
-export const getChallenge = () => api<DailyChallenge>('/api/daily');
-export const startAttempt = () =>
-  api<{ attempt: Attempt }>('/api/attempt/start', {});
-export const sendMove = (attemptId: string, move: string) =>
-  api<{ attempt: Attempt }>('/api/attempt/submit', { attemptId, move });

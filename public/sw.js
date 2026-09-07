@@ -1,5 +1,5 @@
-/* Only the shell and static assets are cached. Puzzle and attempt APIs are NEVER cached. */
-const VERSION='chesscape-shell-v1';
+/* Cache the shell and static assets. Puzzle solutions stay in the active page's memory. */
+const VERSION='chesscape-shell-v2';
 const SHELL=['/','/favicon.svg','/icon-192.png','/icon-512.png','/manifest.webmanifest',...['w','b'].flatMap(c=>['K','Q','R','B','N','P'].map(p=>`/pieces/${c}${p}.svg`))];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(SHELL)));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('chesscape-')&&key!==VERSION).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});

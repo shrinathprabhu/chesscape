@@ -1,6 +1,6 @@
 # Chesscape
 
-A daily escape-the-mate PWA. One shared position, one committed legal move, 30 seconds, and a downloadable board-and-time reward. The frontend uses React 19, TypeScript, chess.js, and the existing Vinext/Vite Sites scaffold. A small API and SQLite/D1 storage enforce attempts and timing.
+A daily escape-the-mate PWA with instant, local play. Find one of the one or two safe moves within 30 seconds, retry the same position until solved, and share a board-and-time card. React 19, TypeScript, chess.js, and the existing Vinext/Vite Sites scaffold power the frontend. A small Worker and SQLite/D1 database publish the shared daily puzzle.
 
 ## Run locally
 
@@ -13,55 +13,45 @@ npm run dev
 ```sh
 npm test
 npm run typecheck
+npm run lint
 npm run build
+node scripts/check-client-boundary.mjs
 ```
 
-`npm run icons` regenerates the install icons from the attributed Cburnett knight. Artwork license and attribution are in `public/pieces/`.
+`npm run icons` regenerates install icons from the attributed Cburnett knight. Artwork attribution and license are in `public/pieces/`.
 
-## Daily puzzle
+## Local play and progress
 
-The server pins one puzzle under a unique UTC date. The first request claims the date atomically, checks `https://lichess.org/api/puzzle/daily` once (2.5-second timeout), and stores the result privately for that date. Other requests reuse the durable record; they never cause repeated upstream calls. If the upstream request fails or the puzzle is unsuitable, the already-validated original remains available. An upstream result cannot replace a puzzle after anyone starts it.
+`GET /api/daily` returns the date, display number, initial FEN, accepted UCI moves (`solutions`), a mating reply for every wrong legal move (`refutations`), attribution, escape count, and next UTC reset. These answers are deliberately included for immediate on-device validation. There is no competitive leaderboard or server-certified timing.
 
-A Lichess daily puzzle must have the `defensiveMove` theme, at least five legal moves, exactly one or two moves that avoid immediate checkmate, and the first Lichess solution move among those escapes. The PGN is replayed through `initialPly + 1` to include the opponent's setup move. Every rejected legal move must permit an immediate mating reply. These checks enforce **escape from mate on the next move**; they do not prove the survivor is winning or free of a longer forced mate.
+Once loaded, starting, moving, timing out, and retrying perform no network requests. The client uses chess.js for legality, looks up the accepted move, and applies a precomputed mating reply after a wrong move. Each retry starts at the same initial position with a fresh 30 seconds. An illegal move keeps the attempt active. A legal wrong move or an expired timer ends that try.
 
-The fallback is a small launch pack of original compositions with file/color transforms. It is clearly attributed as “Chesscape original,” never misrepresented as a Lichess puzzle. This finite pack repeats after 16 days. Before a broad public launch, replace it with a larger private collection imported from the [CC0 Lichess puzzle database](https://database.lichess.org/#puzzles), filtered by defensive themes and verified with Stockfish MultiPV at a fixed depth. Keep that work offline or scheduled; never run Stockfish in a visitor-triggered function. The tagged database is a candidate source; themes alone do not prove an escape.
+Progress and personal history are saved under `chesscape-progress-v2` in this browser's localStorage. An unfinished puzzle stays pinned across visits, even across midnight. Reloading fetches `GET /api/daily?day=YYYY-MM-DD` for that saved puzzle and restores the active deadline or result. After a solve, the next puzzle unlocks at the following midnight UTC, based on the completion date. Reloading or reopening the page does not reset that cooldown. Clearing site data or switching browsers starts fresh.
 
-## The anti-inspect boundary
+Solutions and reply maps remain in the active page's memory and are excluded from saved progress, browser HTTP caching, and service-worker caches. The public daily response can be cached by the CDN until midnight, and by each Worker instance. A loaded puzzle works offline in the same tab. Reopening the app or loading another puzzle requires a connection. The share card uses the local elapsed time.
 
-| Endpoint                   | Response                                                                                                                                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/daily`           | Day, display number, escape count, source label, UTC reset, this browser's aggregate history, and its existing attempt if already started. A fresh visitor receives no FEN and no solution. |
-| `POST /api/attempt/start`  | An opaque attempt ID, FEN, server timestamps, and state. Never a solution, PGN, original puzzle ID, or evaluation.                                                                          |
-| `POST /api/attempt/submit` | The committed correct/incorrect/timeout result, server elapsed time, resulting board, and a mating reply only after a wrong move. Never the accepted move array.                            |
+The former start and submit endpoints have been removed. Existing database migrations and historical `attempts` records are retained for compatibility; the app no longer reads or writes player attempts or cookies. Local history begins with this release. The old `rate_limits` table now provides only a unique, expiring daily upstream-fetch lock.
 
-`server/chess.ts` and `server/service.ts` must remain server-only. The UI imports only the contracts, API client, and chess.js for legal-move highlighting. The build validation scans browser JavaScript for original position strings and server-only evaluation identifiers.
+## Daily puzzle selection
 
-- Start time and deadline are generated on the server. Client-supplied times are not accepted. The deadline is checked against the server's receipt time, so network transit is part of the attempt.
-- Attempts belong to an opaque `HttpOnly; SameSite=Strict; Secure` cookie (Secure on HTTPS). `(client, day)` is unique in SQLite, including concurrent starts.
-- Submission uses an atomic `UPDATE … WHERE status='playing'`. Replays and competing requests see the single committed result.
-- An illegal move can be corrected; one legal wrong move ends the attempt.
-- Mutations enforce exact same-origin requests. Responses use `private, no-store`, and the service worker skips `/api/` entirely.
-- Durable rate limits permit 15 new attempts per UTC day per network and 20 submissions per minute per identity. IP keys are date-scoped hashes and are removed after expiry. Shared networks share the start budget. Cloudflare supplies the trusted connecting-IP header; a Vercel or Netlify adapter must use that provider's trusted client-IP mechanism.
-- History is durable and scoped to the browser cookie. No account or cross-device identity is implied.
+The server publishes one immutable puzzle under a unique UTC date. A database lock limits the Lichess daily check to once per date, with a 2.5-second timeout. A suitable Lichess puzzle is used when available; otherwise a verified original is published. Concurrent cold requests may publish the original while the upstream check is pending; all visitors then receive that same original. An already-published position is never replaced. Existing historical puzzle requests only read saved rows, so arbitrary date requests do not trigger upstream work.
 
-A public position can be searched on Lichess or solved by an external engine. Anonymous cookies can be cleared; proxies can evade IP limits. This implementation prevents accidental answer disclosure, client clock spoofing, replay, and concurrent guesses within an attempt. It does **not** promise complete anti-cheat. Add provider-level rate limits/WAF, budget alerts and stronger identity before offering valuable rewards or a competitive leaderboard. The current reward is a personal share card.
+A Lichess daily puzzle must have the `defensiveMove` theme, at least five legal moves, exactly one or two moves that avoid immediate checkmate, and its first solution move among those escapes. The PGN is replayed through `initialPly + 1` to include the opponent's setup move. Every rejected legal move permits an immediate mating reply. This verifies escape from mate on the next move, rather than a guarantee against a longer forced mate.
 
-## Hosting and Vercel / Netlify plan
+The launch fallback pack contains original compositions with file/color transforms and repeats after 16 days. It is attributed as “Chesscape original.” A larger collection can later be imported from the CC0 Lichess puzzle database and verified offline. Full puzzle-generation and search code stays out of the browser bundle; only the selected puzzle and its answers are sent.
 
-The included working deployment uses the generated Sites Cloudflare Worker with D1 (`DB`). Source migrations live in `drizzle/`; the Sites packager copies them to `dist/.openai/drizzle/` in the release archive. `npm run verify:archive -- /path/to/release.tar.gz` checks that every generated migration and its metadata are included, byte for byte, before publishing. There is no unconfigured production-memory fallback.
+## Hosting
 
-For Vercel or Netlify, keep the frontend and HTTP contracts, port the three small route wrappers, and implement the same prepared-statement storage calls against a durable SQL service available over HTTP (for example Turso/libSQL). Keep the schema uniqueness and conditional updates unchanged. Do not replace storage with process memory or a signed token alone: neither consumes a guess atomically across function instances. Keep database credentials server-side and use runtime secret configuration. A scheduled UTC job can warm `getDaily`; the unique day lock already prevents multiple upstream requests.
+The working Sites deployment uses a Cloudflare Worker with D1 (`DB`). Source migrations live in `drizzle/`; the Sites packager copies them to `dist/.openai/drizzle/`. `npm run verify:archive -- /path/to/release.tar.gz` checks that every migration and metadata file is included unchanged before publishing.
 
-Configure provider-level flood protection in addition to the application rate limit. Only cache public daily metadata at the CDN if it is separated from cookie-scoped attempt/history data; the current combined endpoint intentionally is not CDN cached. The upstream puzzle is cached privately in D1.
+A Vercel or Netlify port needs only the daily GET route and durable daily puzzle storage. Keep the unique date and atomic publish behavior; process memory alone cannot keep all function instances on one puzzle. CDN caching and the daily upstream lock limit repeated work. Provider-level flood protection can cover requests to the public daily endpoint.
 
 ## Domain and PWA
 
-The configured canonical is `https://lowkey.tools/chesscape`. The app currently runs at the origin root, suitable for `chesscape.lowkey.tools`. Domain/DNS ownership is not configured automatically. Connect the subdomain to the chosen host. If the full app is also served below `/chesscape`, set the framework base path and adjust API, asset, manifest scope/start URL and service-worker paths together; a canonical link alone is not a reverse proxy.
+The canonical is `https://lowkey.tools/chesscape`. The app runs at the origin root, suitable for `chesscape.lowkey.tools`. Domain/DNS ownership is configured separately. Serving the full app below `/chesscape` also requires a framework base path and corresponding API, asset, manifest, and service-worker path changes.
 
-The manifest has real 192/512px PNG icons, standalone display, install handling, and iOS instructions. The service worker caches only the app shell and static assets; online connectivity is required for timed attempts and verification. Share cards are rendered locally from the resulting board and server-returned time, with native file sharing, PNG download, and text-copy fallbacks.
+The manifest includes 192/512px PNG icons, standalone display, install handling, and iOS instructions. The service worker caches the shell and static assets. Share cards support native file sharing, PNG download, and text copying.
 
 ## Validation
 
-Unit/integration tests exercise all original puzzles and transforms, correct/incorrect/illegal moves, exact-deadline expiry, ownership, repeated/concurrent submissions, the once-per-day upstream cache, and durable rate limiting using real SQLite statements. Browser UI and install prompts require device testing; they have not been claimed as browser-tested. Optional WebMCP tools are feature-detected and use the same actions; no supported WebMCP validation context was available in this run.
-
-The starter's React server runtime, Vinext, and Vite were updated to patched releases before publication. The remaining production-install audit findings are transitive `undici` and `esbuild` advisories in local CLI/dev-server tooling; neither library is present in the deployed Worker JavaScript. Development-only migration tooling has additional audit findings. Keep the toolchain updated and do not expose the development server publicly.
+Tests verify all 16 original transforms, every safe move and mating reply, synchronous offline play, illegal moves, exact-deadline timeout, retry timing, saved progress without solutions, puzzle pinning across dates, the post-solve cooldown, local statistics, and concurrent daily publication using real SQLite. The release check scans browser JavaScript for obsolete per-move endpoints and server puzzle-generation code. UI and install prompts still require device testing; no browser-driven visual test is claimed.

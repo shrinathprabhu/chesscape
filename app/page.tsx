@@ -32,9 +32,19 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { getChallenge, sendMove, startAttempt } from '@/lib/client-api';
+import { getChallenge } from '@/lib/client-api';
+import {
+  createAttempt,
+  commitMove,
+  expireAttempt,
+  needsNewPuzzle,
+  progressStats,
+  readProgress,
+  recordAttempt,
+  saveProgress,
+} from '@/lib/local-game';
 import { createShareImage, downloadBlob, shareText } from '@/lib/share';
-import type { Attempt, DailyChallenge } from '@/lib/contracts';
+import type { Attempt, DailyChallenge, LocalProgress } from '@/lib/contracts';
 
 type InstallEvent = Event & {
   prompt: () => Promise<void>;
@@ -83,6 +93,9 @@ export default function Home() {
   const [focusedSquare, setFocusedSquare] = useState('a8');
   const deadline = useRef(0);
   const operation = useRef(false);
+  const progressRef = useRef<LocalProgress | null>(null);
+  const restored = useRef(false);
+  const lastRefresh = useRef(0);
   const attemptRef = useRef<Attempt | null>(null);
   const dailyRef = useRef<DailyChallenge | null>(null);
   const [shareBlob, setShareBlob] = useState<Blob | null>(null);
@@ -96,18 +109,10 @@ export default function Home() {
     () => new Chess(attempt?.fen ?? DEFAULT_POSITION),
     [attempt?.fen],
   );
-  const initialSide = useMemo(() => {
-    if (!attempt) return 'w';
-    return attempt.status === 'playing'
-      ? game.turn()
-      : attempt.status === 'lost' && attempt.reply
-        ? game.turn()
-        : attempt.status === 'won'
-          ? game.turn() === 'w'
-            ? 'b'
-            : 'w'
-          : game.turn();
-  }, [attempt, game]);
+  const initialSide = useMemo(
+    () => new Chess(daily?.fen ?? DEFAULT_POSITION).turn(),
+    [daily?.fen],
+  );
   const legal = useMemo(
     () =>
       playing && selected
@@ -125,40 +130,91 @@ export default function Home() {
 
   const notify = useCallback((message: string) => setNotice(message), []);
   const acceptAttempt = useCallback((value: Attempt) => {
-    const current = attemptRef.current;
-    if (
-      current?.id === value.id &&
-      (current.serverNow > value.serverNow ||
-        (current.status !== 'playing' && value.status === 'playing'))
-    )
-      return;
+    if (!progressRef.current || !dailyRef.current) return;
+    const progress = recordAttempt(progressRef.current, value);
+    progressRef.current = progress;
     attemptRef.current = value;
     setAttempt(value);
+    const challenge = {
+      ...dailyRef.current,
+      attempt: value,
+      stats: progressStats(progress),
+      resetsAt: progress.nextAvailableAt ?? dailyRef.current.resetsAt,
+    };
+    dailyRef.current = challenge;
+    setDaily(challenge);
     deadline.current =
-      performance.now() + Math.max(0, value.expiresAt - value.serverNow);
-    setRemaining(Math.max(0, value.expiresAt - value.serverNow));
+      performance.now() + Math.max(0, value.expiresAt - Date.now());
+    setRemaining(Math.max(0, value.expiresAt - Date.now()));
     setSelected(null);
     setPromotion(null);
+    try {
+      saveProgress(localStorage, progress);
+    } catch {
+      setNotice(
+        'Browser storage is unavailable. Keep this tab open to keep your progress.',
+      );
+    }
   }, []);
   const refresh = useCallback(async () => {
+    if (operation.current) return;
+    if (!restored.current) {
+      restored.current = true;
+      try {
+        progressRef.current = readProgress(localStorage);
+      } catch {}
+    }
+    const progress = progressRef.current;
+    if (dailyRef.current && !needsNewPuzzle(progress)) {
+      const current = attemptRef.current;
+      if (current) {
+        const expired = expireAttempt(current);
+        if (expired !== current) acceptAttempt(expired);
+      }
+      return;
+    }
+    operation.current = true;
+    lastRefresh.current = Date.now();
+    setBusy(true);
     try {
-      const value = await getChallenge();
+      const puzzle = await getChallenge(
+        needsNewPuzzle(progress) ? undefined : progress?.day,
+      );
+      let next: LocalProgress = {
+        version: 2,
+        day: puzzle.day,
+        history: progress?.history ?? [],
+        attempt: progress?.day === puzzle.day ? progress.attempt : null,
+        nextAvailableAt:
+          progress?.day === puzzle.day ? progress.nextAvailableAt : null,
+      };
+      if (next.attempt) next = recordAttempt(next, expireAttempt(next.attempt));
+      progressRef.current = next;
+      const value: DailyChallenge = {
+        ...puzzle,
+        attempt: next.attempt,
+        stats: progressStats(next),
+        resetsAt: next.nextAvailableAt ?? puzzle.resetsAt,
+      };
       dailyRef.current = value;
       setDaily(value);
       setLoadError('');
+      try {
+        saveProgress(localStorage, next);
+      } catch {
+        setNotice(
+          'Browser storage is unavailable. Keep this tab open to keep your progress.',
+        );
+      }
       if (value.attempt) {
-        const previous = attemptRef.current;
         acceptAttempt(value.attempt);
-        if (!previous)
-          setFlipped(
-            new Chess(value.attempt.fen).turn() ===
-              (value.attempt.status === 'won' ? 'w' : 'b'),
-          );
-      } else if (!attemptRef.current || attemptRef.current.day !== value.day) {
+        setFlipped(new Chess(puzzle.fen).turn() === 'b');
+      } else {
         attemptRef.current = null;
         setAttempt(null);
         setRemaining(30000);
         setSelected(null);
+        setPromotion(null);
       }
     } catch (error) {
       setLoadError(
@@ -166,6 +222,9 @@ export default function Home() {
           ? error.message
           : 'Could not load today’s escape.',
       );
+    } finally {
+      operation.current = false;
+      setBusy(false);
     }
   }, [acceptAttempt]);
   useEffect(() => {
@@ -220,25 +279,36 @@ export default function Home() {
   }, [notice]);
   useEffect(() => {
     if (!playing) return;
-    let checking = false;
     const timer = setInterval(() => {
-      const value = Math.max(0, deadline.current - performance.now());
+      const current = attemptRef.current;
+      if (!current || current.status !== 'playing') return;
+      const value = Math.max(
+        0,
+        Math.min(
+          deadline.current - performance.now(),
+          current.expiresAt - Date.now(),
+        ),
+      );
       setRemaining(value);
-      if (value === 0 && !checking && !operation.current) {
-        checking = true;
-        void refresh().finally(() => {
-          setTimeout(() => {
-            checking = false;
-          }, 1500);
-        });
-      }
-    }, 40);
+      if (value === 0)
+        acceptAttempt(
+          expireAttempt(current, Math.max(Date.now(), current.expiresAt)),
+        );
+    }, 100);
     return () => clearInterval(timer);
-  }, [playing, refresh]);
+  }, [playing, acceptAttempt]);
   useEffect(() => {
-    if (!daily || !now || now < daily.resetsAt || playing) return;
+    if (
+      !won ||
+      !daily ||
+      !now ||
+      now < daily.resetsAt ||
+      !online ||
+      now - lastRefresh.current < 30000
+    )
+      return;
     queueMicrotask(() => void refresh());
-  }, [now, daily, playing, refresh]);
+  }, [now, daily, won, online, refresh]);
   useEffect(
     () => () => {
       if (shareUrl) URL.revokeObjectURL(shareUrl);
@@ -274,57 +344,32 @@ export default function Home() {
       });
     } catch {}
   }
-  async function start() {
-    if (operation.current || attemptRef.current || !dailyRef.current) return;
-    operation.current = true;
-    setBusy(true);
-    playTone();
-    try {
-      const { attempt: value } = await startAttempt();
-      acceptAttempt(value);
-      setFlipped(new Chess(value.fen).turn() === 'b');
-    } catch (error) {
-      notify(
-        error instanceof Error
-          ? error.message
-          : 'Could not begin. Please try again.',
-      );
-      void refresh();
-    } finally {
-      operation.current = false;
-      setBusy(false);
-    }
-  }
-  async function commit(from: Square, to: Square, promote?: string) {
-    if (operation.current || attemptRef.current?.status !== 'playing') return;
-    const current = new Chess(attemptRef.current.fen);
-    let legalMove;
-    try {
-      legalMove = current.move({ from, to, promotion: promote });
-    } catch {
-      notify('That move is not legal. Choose a highlighted square.');
+  function start() {
+    if (
+      operation.current ||
+      !dailyRef.current ||
+      attemptRef.current?.status === 'playing' ||
+      attemptRef.current?.status === 'won'
+    )
       return;
-    }
-    if (!legalMove) return;
-    operation.current = true;
-    setBusy(true);
-    setPromotion(null);
+    const value = createAttempt(dailyRef.current);
+    acceptAttempt(value);
+    setFlipped(new Chess(value.fen).turn() === 'b');
+    playTone();
+  }
+  function commit(from: Square, to: Square, promote?: string) {
+    if (!dailyRef.current || attemptRef.current?.status !== 'playing') return;
     try {
-      const { attempt: value } = await sendMove(
-        attemptRef.current.id,
-        legalMove.lan,
-      );
+      const current = attemptRef.current;
+      const value = commitMove(dailyRef.current, current, {
+        from,
+        to,
+        promotion: promote,
+      });
       acceptAttempt(value);
       playTone(value.status === 'won');
-      void refresh();
-    } catch (error) {
-      notify(
-        error instanceof Error ? error.message : 'Could not verify your move.',
-      );
-      void refresh();
-    } finally {
-      operation.current = false;
-      setBusy(false);
+    } catch {
+      notify('That move is not legal. Choose a highlighted square.');
     }
   }
   function choose(square: Square, dragFrom?: Square) {
@@ -339,7 +384,7 @@ export default function Home() {
           setPromotion({ from, to: square });
           return;
         }
-        void commit(from, square);
+        commit(from, square);
         return;
       }
     }
@@ -462,17 +507,20 @@ export default function Home() {
     register({
       name: 'start_chesscape_attempt',
       description:
-        'Begin the one daily attempt and its unpausable 30-second server timer. This reveals the board.',
+        'Start or retry this puzzle with a fresh 30-second local timer. Solved puzzles unlock the next day.',
       inputSchema: {
         type: 'object',
         properties: {},
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: async () => {
-        if (attemptRef.current)
-          throw new Error('Today’s attempt has already started.');
-        await actions.current.start();
+      execute: () => {
+        if (
+          attemptRef.current?.status === 'playing' ||
+          attemptRef.current?.status === 'won'
+        )
+          throw new Error('The puzzle is already in progress or solved.');
+        actions.current.start();
         if (!attemptRef.current)
           throw new Error('The attempt could not start.');
         return attemptRef.current;
@@ -481,7 +529,7 @@ export default function Home() {
     register({
       name: 'submit_chesscape_move',
       description:
-        'Commit one legal chess move. A legal wrong move ends the attempt. Returns the server-verified result.',
+        'Commit one legal chess move and return the immediate local result. A wrong move ends this try; the same puzzle can be retried.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -493,7 +541,7 @@ export default function Home() {
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: async (input: unknown) => {
+      execute: (input: unknown) => {
         const data = input as {
           from?: string;
           to?: string;
@@ -510,7 +558,7 @@ export default function Home() {
           throw new Error('No active attempt.');
         const g = new Chess(attemptRef.current.fen);
         g.move({ from: data.from!, to: data.to!, promotion: data.promotion });
-        await actions.current.commit(
+        actions.current.commit(
           data.from as Square,
           data.to as Square,
           data.promotion,
@@ -590,8 +638,10 @@ export default function Home() {
         </section>
         {!online && (
           <output className="connection-banner">
-            <WifiOff size={16} /> You’re offline. Reconnect to start or verify
-            your escape. An active timer keeps running.
+            <WifiOff size={16} />{' '}
+            {daily
+              ? 'You’re offline. Your loaded escape is ready to play. Reconnect for the next puzzle.'
+              : 'You’re offline. Reconnect to load your saved escape.'}
           </output>
         )}
         <div className="game-layout">
@@ -744,8 +794,8 @@ export default function Home() {
                     </p>
                     <button
                       className="primary-button"
-                      disabled={busy || !daily || !online}
-                      onClick={() => void start()}
+                      disabled={busy || !daily}
+                      onClick={start}
                     >
                       {busy ? (
                         <>
@@ -789,7 +839,7 @@ export default function Home() {
                     {won
                       ? 'King safe. Nicely done.'
                       : attempt.status === 'timeout'
-                        ? 'Time’s up. A new escape awaits tomorrow.'
+                        ? 'Time’s up. Take a breath and try again.'
                         : `Checkmate. ${attempt.move} left your king exposed.`}
                   </span>
                 </output>
@@ -824,21 +874,35 @@ export default function Home() {
               </div>
             </div>
             <div className="board-instruction" aria-live="polite">
-              {busy && attempt ? (
-                <>
-                  <LoaderCircle size={13} className="spin" /> Checking your
-                  move…
-                </>
-              ) : playing ? (
+              {playing ? (
                 selected ? (
                   <>Choose a highlighted square to commit your move.</>
                 ) : (
                   <>Click a piece, then its destination. Or drag to move.</>
                 )
-              ) : done ? (
+              ) : won ? (
                 <>
-                  Next escape in <strong>{resetClock}</strong>
+                  {untilReset > 0 ? (
+                    <>
+                      Next escape in <strong>{resetClock}</strong>
+                    </>
+                  ) : (
+                    <button
+                      className="retry-link"
+                      disabled={busy || !online}
+                      onClick={() => void refresh()}
+                    >
+                      {busy
+                        ? 'Loading your next escape…'
+                        : online
+                          ? 'Load your next escape'
+                          : 'Reconnect for your next escape'}{' '}
+                      <RotateCw size={12} />
+                    </button>
+                  )}
                 </>
+              ) : done ? (
+                <>Same position. A fresh thirty seconds. Try another move.</>
               ) : (
                 <>A small daily ritual. A very real ticking clock.</>
               )}
@@ -846,7 +910,7 @@ export default function Home() {
           </section>
           <aside className="challenge-column">
             <div className="challenge-heading">
-              <span className="eyebrow">TODAY’S CHALLENGE</span>
+              <span className="eyebrow">YOUR DAILY CHALLENGE</span>
               <span className="puzzle-number">
                 No. {daily ? String(daily.number).padStart(3, '0') : '—'}
               </span>
@@ -875,7 +939,7 @@ export default function Home() {
               {won ? (
                 'A clear head. A clever move. Your king lives to see another day.'
               ) : done ? (
-                'One position doesn’t define your game. Take a breath. Come back tomorrow.'
+                'One move doesn’t define your game. Take a breath. Your escape is still here.'
               ) : (
                 <>
                   Your king is one move from trouble.
@@ -902,9 +966,9 @@ export default function Home() {
                 <span>{done ? 'YOUR ESCAPE TIME' : 'TIME TO ESCAPE'}</span>
                 <span className="timer-status">
                   {won
-                    ? 'Server verified'
+                    ? 'Nicely done'
                     : done
-                      ? 'Until tomorrow'
+                      ? 'Try again'
                       : playing
                         ? remaining < 10000
                           ? 'You’ve got this.'
@@ -935,7 +999,7 @@ export default function Home() {
                     : playing
                       ? 'Trust your eyes. Find your move.'
                       : done
-                        ? 'A fresh start at midnight UTC.'
+                        ? 'Take a breath. Give it another try.'
                         : 'Take a breath. Then take your shot.'}
                 </span>
                 <span>{won ? <Check size={13} /> : '30 SEC'}</span>
@@ -952,6 +1016,14 @@ export default function Home() {
                 </button>
                 <p>Your board. Your time. Your bragging rights.</p>
               </div>
+            ) : done ? (
+              <div className="win-actions">
+                <button className="primary-button" onClick={start}>
+                  <RotateCw size={17} /> Try this escape again{' '}
+                  <ArrowRight size={17} />
+                </button>
+                <p>Same puzzle. A fresh 30 seconds. You’ve got this.</p>
+              </div>
             ) : (
               <div className="rules-compact">
                 <div>
@@ -959,8 +1031,8 @@ export default function Home() {
                     <MoveUpRight size={19} />
                   </span>
                   <p>
-                    <strong>One chance to escape.</strong>
-                    <span>Choose carefully. No takebacks.</span>
+                    <strong>Thirty seconds per try.</strong>
+                    <span>Keep this puzzle until you find your way out.</span>
                   </p>
                 </div>
                 <div>
@@ -989,10 +1061,9 @@ export default function Home() {
         </div>
         <div className="under-game">
           <span>
-            <ShieldCheck size={15} /> No hints. No takebacks. Just you and the
-            board.
+            <ShieldCheck size={15} /> Finish this escape. The next one can wait.
           </span>
-          <span>Same challenge for everyone. Resets at 00:00 UTC.</span>
+          <span>Solve it to unlock the next escape at 00:00 UTC.</span>
         </div>
       </main>
       <footer>
@@ -1041,7 +1112,7 @@ export default function Home() {
           </DialogTitle>
           <DialogDescription>
             {modal === 'how'
-              ? 'One position. One chance. Thirty seconds.'
+              ? 'One position. Thirty seconds per try.'
               : modal === 'stats'
                 ? 'Your Chesscape history on this browser.'
                 : modal === 'install'
@@ -1079,7 +1150,8 @@ export default function Home() {
                     <p>
                       A legal move is your final answer. Escape in time to earn
                       a share card. A wrong move or the clock reaching zero ends
-                      today’s attempt.
+                      this try. Start again with the same position and a fresh
+                      timer.
                     </p>
                   </div>
                 </li>
@@ -1087,17 +1159,18 @@ export default function Home() {
               <div className="modal-note">
                 <ShieldCheck size={19} />
                 <p>
-                  Your move and time are verified on the server. Refreshing
-                  keeps the clock running. A new challenge arrives at midnight
-                  UTC.
+                  Your moves react instantly on this device. Refreshing keeps
+                  the clock running. An unfinished puzzle stays with you across
+                  visits. Solve it, then return after midnight UTC for the next
+                  escape.
                 </p>
               </div>
               <p className="source-note">
                 {daily?.source === 'Lichess'
                   ? 'Today’s position comes from the public-domain Lichess puzzle database.'
                   : 'Today’s puzzle is a verified Chesscape original. When the Lichess daily puzzle fits the escape format, we use it.'}{' '}
-                Offline? The app opens, but starting and verifying a challenge
-                needs a connection.
+                Once loaded, your puzzle works offline in this tab. Reconnect
+                when reopening the app or loading your next escape.
               </p>
               <button className="primary-button" onClick={() => setModal(null)}>
                 Got it. Keep my king safe. <ArrowRight size={16} />
@@ -1168,9 +1241,8 @@ export default function Home() {
                 </p>
               )}
               <p className="source-note">
-                Your history is saved securely against this browser’s anonymous
-                cookie. Clearing cookies or using another browser starts a new
-                history.
+                Your progress and history are saved on this browser. Clearing
+                site data or using another browser starts a new history.
               </p>
             </div>
           )}
@@ -1189,8 +1261,8 @@ export default function Home() {
                 Edge and choose “Install app” from the browser menu.
               </p>
               <p className="modal-note">
-                The app shell works offline. Your timed daily attempt needs an
-                internet connection.
+                Load your escape once, then play and retry offline in this tab.
+                Reconnect when reopening the app or getting your next puzzle.
               </p>
             </div>
           )}
@@ -1255,7 +1327,7 @@ export default function Home() {
                 key={p}
                 aria-label={`Promote to ${names[p]}`}
                 onClick={() => {
-                  if (promotion) void commit(promotion.from, promotion.to, p);
+                  if (promotion) commit(promotion.from, promotion.to, p);
                 }}
               >
                 <img
