@@ -63,3 +63,5 @@ The manifest has real 192/512px PNG icons, standalone display, install handling,
 ## Validation
 
 Unit/integration tests exercise all original puzzles and transforms, correct/incorrect/illegal moves, exact-deadline expiry, ownership, repeated/concurrent submissions, the once-per-day upstream cache, and durable rate limiting using real SQLite statements. Browser UI and install prompts require device testing; they have not been claimed as browser-tested. Optional WebMCP tools are feature-detected and use the same actions; no supported WebMCP validation context was available in this run.
+
+The starter's React server runtime, Vinext, and Vite were updated to patched releases before publication. The remaining production-install audit findings are transitive `undici` and `esbuild` advisories in local CLI/dev-server tooling; neither library is present in the deployed Worker JavaScript. Development-only migration tooling has additional audit findings. Keep the toolchain updated and do not expose the development server publicly.
