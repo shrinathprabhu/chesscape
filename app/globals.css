@@ -1476,3 +1476,289 @@ fieldset.chessboard {
     color: #a4593c;
   }
 }
+
+/* Crawlable guidance stays below the playing surface. */
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  padding: 12px 18px;
+  background: var(--foreground);
+  color: white;
+  border-radius: 6px;
+  transform: translateY(-180%);
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
+.no-script-note {
+  padding: 16px;
+  text-align: center;
+}
+#main-content {
+  scroll-margin-top: 12px;
+}
+.intro .intro-credits {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #626d59;
+}
+.intro-credits a,
+.discovery-content a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.discovery-content {
+  max-width: 1054px;
+  margin: 48px auto 28px;
+  color: #56604f;
+}
+.discovery-content section {
+  padding: 36px 0;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 24px;
+}
+.discovery-content h2 {
+  font:
+    400 clamp(1.6rem, 3vw, 2rem)/1.2 Georgia,
+    serif;
+  color: var(--foreground);
+  margin: 10px 0 18px;
+  letter-spacing: -0.5px;
+}
+.discovery-content h3 {
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--foreground);
+  margin: 0 0 8px;
+}
+.discovery-content p {
+  font-size: 1rem;
+  line-height: 1.75;
+  margin: 0 0 12px;
+}
+.game-guide {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+}
+.guide-steps {
+  margin: 0;
+  padding-left: 24px;
+  display: grid;
+  gap: 18px;
+}
+.guide-steps li {
+  padding-left: 8px;
+}
+.guide-steps li::marker {
+  color: var(--primary);
+  font-weight: 600;
+}
+.faq-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 32px;
+  align-items: start;
+}
+.faq-list details {
+  border-bottom: 1px solid var(--border);
+}
+.faq-list summary {
+  padding: 18px 0;
+  min-height: 48px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+.faq-list summary:focus-visible {
+  outline: 3px solid #7b9962;
+  outline-offset: 3px;
+}
+.faq-list details > div {
+  padding-bottom: 10px;
+}
+.faq-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.creators-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 30px;
+}
+.creators-section article {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #edf0e780;
+}
+.creators-section article > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.discovery-links {
+  display: flex;
+  gap: 12px 24px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.discovery-links a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.board-actions button,
+.nav-item,
+.install-button {
+  min-height: 44px;
+  min-width: 44px;
+}
+button,
+a,
+summary {
+  touch-action: manipulation;
+}
+.square {
+  touch-action: manipulation;
+}
+.start-card {
+  max-width: calc(100% - 16px);
+}
+.start-card .primary-button {
+  white-space: normal;
+}
+.board-top,
+.board-bottom {
+  min-height: 35px;
+  height: auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.board-instruction {
+  min-height: 24px;
+}
+.intro > p,
+.start-card p,
+.challenge-description {
+  font-size: 1rem;
+}
+@media (max-width: 1050px) {
+  .creators-section {
+    grid-template-columns: 1fr 1fr;
+  }
+  .creators-section > div {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 760px) {
+  .site-shell {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .site-header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 74px;
+    column-gap: 6px;
+    padding: 8px 0;
+  }
+  .site-header nav {
+    gap: 0;
+  }
+  .brand {
+    font-size: clamp(20px, 6vw, 25px);
+  }
+  .brand-mark {
+    margin-right: 6px;
+  }
+  .intro {
+    padding: 20px 0;
+  }
+  .intro h1 {
+    font-size: clamp(28px, 8vw, 41px);
+    letter-spacing: -1px;
+  }
+  .intro > p {
+    font-size: 14px;
+  }
+  .intro .intro-credits {
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .intro .eyebrow,
+  .mini-tag,
+  .start-caption,
+  .board-instruction,
+  .your-turn,
+  .under-game,
+  footer,
+  .footer-button {
+    font-size: 12px;
+  }
+  .mini-tag {
+    letter-spacing: 0.5px;
+  }
+  .board-top {
+    min-height: 32px;
+  }
+  .start-card {
+    padding: 16px;
+  }
+  .start-card h2 {
+    font-size: clamp(23px, 6.5vw, 29px);
+  }
+  .start-card p {
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+  .board-result {
+    bottom: 12px;
+    padding: 8px;
+  }
+  .discovery-content {
+    margin-top: 28px;
+  }
+  .discovery-content section {
+    padding: 28px 0;
+  }
+  .game-guide,
+  .faq-list,
+  .creators-section {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .faq-list {
+    gap: 0;
+  }
+  .creators-section > div {
+    grid-column: auto;
+  }
+  .discovery-content .eyebrow {
+    font-size: 12px;
+  }
+  .creator-credit {
+    font-size: 13px;
+  }
+}
+@media (max-width: 360px) {
+  .brand-mark {
+    display: none;
+  }
+  .start-icon {
+    display: none;
+  }
+  .start-card h2 {
+    margin-top: 0;
+  }
+}

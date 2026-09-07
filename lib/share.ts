@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import type { Attempt } from './contracts';
+import { appPath } from './site';
 export const shareText = (attempt: Attempt, number: number) =>
   `Solved ${attempt.day === new Date(attempt.updatedAt).toISOString().slice(0, 10) ? "today's" : 'my'} Chesscape within ${((attempt.elapsedMs ?? 0) / 1000).toFixed(2)} seconds. ♟\nChesscape No. ${String(number).padStart(3, '0')} · ${attempt.day}\nFind your escape → https://lowkey.tools/chesscape`;
 export async function createShareImage(
@@ -40,7 +41,7 @@ export async function createShareImage(
       ),
     ].map(async (key) => {
       const img = new Image();
-      img.src = `/pieces/${key}.svg`;
+      img.src = appPath(`/pieces/${key}.svg`);
       await img.decode();
       images.set(key, img);
     }),

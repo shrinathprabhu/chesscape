@@ -46,12 +46,51 @@ The working Sites deployment uses a Cloudflare Worker with D1 (`DB`). Source mig
 
 A Vercel or Netlify port needs only the daily GET route and durable daily puzzle storage. Keep the unique date and atomic publish behavior; process memory alone cannot keep all function instances on one puzzle. CDN caching and the daily upstream lock limit repeated work. Provider-level flood protection can cover requests to the public daily endpoint.
 
-## Domain and PWA
+## Discoverability, mobile, and PWA
 
-The canonical is `https://lowkey.tools/chesscape`. The app runs at the origin root, suitable for `chesscape.lowkey.tools`. Domain/DNS ownership is configured separately. Serving the full app below `/chesscape` also requires a framework base path and corresponding API, asset, manifest, and service-worker path changes.
+The canonical identity is `https://lowkey.tools/chesscape` across HTML metadata, Open Graph, Twitter, JSON-LD, sitemap, and machine-readable guides. The game is a client island with server-rendered rules, FAQs, and creator content, so this information does not require JavaScript execution. FAQ JSON-LD and Markdown are generated from the same answers as the visible FAQ. Person, Lowkey organization, website, game, and OwlEye product entities are linked explicitly. No ratings, reviews, awards, or usage claims are fabricated.
 
-The manifest includes 192/512px PNG icons, standalone display, install handling, and iOS instructions. The service worker caches the shell and static assets. Share cards support native file sharing, PNG download, and text copying.
+Discovery endpoints are `/robots.txt`, `/sitemap.xml`, `/llms.txt`, and `/index.md`, with appropriate content types. Crawlers can access render assets, while game APIs are excluded from indexing and snippets. `llms.txt` is supplementary context, not a promise of AI citation or ranking. The page uses visible creator links in its introduction, FAQ, creator section, and footer, with normal followable links to `shrinath.me` and `owleye.dev`.
+
+Mobile support includes touch-friendly controls, safe-area padding, flexible layouts, keyboard navigation and a skip link, reduced-motion support, scalable viewport settings, and portrait or landscape use. The install manifest has separate 192/512px regular icons, a full-bleed maskable icon, and a 180px Apple touch icon. No new tracking scripts or remote fonts are loaded.
+
+The 64-square board is memoized independently of the 100ms timer ticks. Chess check detection is reused while a position is unchanged, and the next-day clock runs only on the solved screen. Moves and retries remain entirely local; these changes do not add network round trips to play. Browser field metrics and Lighthouse scores have not been measured or claimed.
+
+## Hosting at lowkey.tools/chesscape
+
+The current Sites preview remains at its origin root. For the intended public subpath, build with:
+
+```sh
+NEXT_PUBLIC_BASE_PATH=/chesscape npm run build
+```
+
+This configures framework routes, client API requests, piece and share-image assets, metadata resource links, manifest identity/start URL/scope, and service-worker registration. The scoped `/chesscape/` start URL remains reachable without a redirect outside its PWA scope. Deploy that build with `/chesscape` and `/chesscape/*` routed to this app, including `/_next` assets under the prefix; do not merely set a canonical link or forward HTML alone. The logical D1 binding is still required. The build script mirrors public assets into the mount, alongside the framework’s prefixed chunks, and sets a non-stale service-worker response header. The origin-root build also works on `chesscape.lowkey.tools` and points to the same canonical.
+
+On the shared lowkey.tools host, merge these rules into its **root** robots.txt without replacing rules for other tools:
+
+```text
+User-agent: *
+Disallow: /chesscape/api/
+Disallow: /chesscape/__
+Sitemap: https://lowkey.tools/chesscape/sitemap.xml
+```
+
+Keep `/chesscape/_next/` and other static assets crawlable. Include the canonical page in lowkey.tools navigation and the app sitemap in the host sitemap index. Add `https://lowkey.tools/chesscape/llms.txt` to the host's root LLM guide. Once the canonical route returns public HTTP 200, submit its sitemap in the owner's Search Console/Bing Webmaster property. Verification tokens, indexing submissions, DNS changes, and cross-site edits are not invented or performed from this repository.
+
+At the time of this update the canonical path returned 404, and the owner confirmed they will host it there. The Sites preview is owner-private. Search engines cannot index that gated preview; the public route must be connected before these signals can be discovered. No public-access change was made.
 
 ## Validation
 
-Tests verify all 16 original transforms, every safe move and mating reply, synchronous offline play, illegal moves, exact-deadline timeout, retry timing, saved progress without solutions, puzzle pinning across dates, the post-solve cooldown, local statistics, and concurrent daily publication using real SQLite. The release check scans browser JavaScript for obsolete per-move endpoints and server puzzle-generation code. UI and install prompts still require device testing; no browser-driven visual test is claimed.
+```sh
+npm test
+npm run typecheck
+npm run lint
+npm run build
+node scripts/check-client-boundary.mjs
+# Against a running origin-root development server:
+node scripts/check-discovery.mjs
+# Against a development server started with the same mount configuration:
+NEXT_PUBLIC_BASE_PATH=/chesscape node scripts/check-discovery.mjs
+```
+
+Tests cover chess correctness, local retries and deadlines, saved progress, daily publication, FAQ/schema consistency, canonical URLs, crawler rules, manifest scope and declared icon dimensions. The HTTP smoke check verifies server-rendered metadata and JSON-LD, native FAQ markup, creator links, discovery response types, mounted assets, and API index exclusion. Browser-driven visual, assistive-technology, install-prompt, and field-performance checks still require device testing.
