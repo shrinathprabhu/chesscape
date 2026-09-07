@@ -7,6 +7,8 @@ export async function createShareImage(
   attempt: Attempt,
   number: number,
 ): Promise<Blob> {
+  // Wait for the page's self-hosted font before baking text into the PNG.
+  await document.fonts.ready;
   const canvas = document.createElement('canvas');
   canvas.width = 1000;
   canvas.height = 1260;
@@ -16,14 +18,14 @@ export async function createShareImage(
   ctx.fillRect(0, 0, 1000, 1260);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#41643c';
-  ctx.font = '22px Arial';
+  ctx.font = '22px "Play", Arial, sans-serif';
   ctx.fillText('CHESSCAPE  /  THE DAILY ESCAPE', 500, 75);
   ctx.fillStyle = '#273b2b';
-  ctx.font = '64px Georgia';
+  ctx.font = '64px "Play", Arial, sans-serif';
   ctx.fillText('Found my way out.', 500, 160);
-  ctx.font = '112px Georgia';
+  ctx.font = '112px "Play", Arial, sans-serif';
   ctx.fillText(((attempt.elapsedMs ?? 0) / 1000).toFixed(2) + 's', 500, 290);
-  ctx.font = '21px Arial';
+  ctx.font = '21px "Play", Arial, sans-serif';
   ctx.fillStyle = '#728168';
   ctx.fillText(
     `No. ${String(number).padStart(3, '0')}  ·  ${attempt.day}  ·  KING SAFE`,
@@ -68,10 +70,10 @@ export async function createShareImage(
       );
   });
   ctx.fillStyle = '#56734a';
-  ctx.font = '24px Georgia';
+  ctx.font = '24px "Play", Arial, sans-serif';
   ctx.fillText('One position. Thirty seconds. Your move.', 500, 1192);
   ctx.fillStyle = '#849078';
-  ctx.font = '18px Arial';
+  ctx.font = '18px "Play", Arial, sans-serif';
   ctx.fillText('lowkey.tools/chesscape', 500, 1230);
   return new Promise((resolve, reject) =>
     canvas.toBlob(

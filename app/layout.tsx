@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next';
+import '@fontsource/play/latin-400.css';
+import '@fontsource/play/latin-700.css';
 import {
   appPath,
   CANONICAL_URL,

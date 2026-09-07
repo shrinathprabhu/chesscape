@@ -16,10 +16,11 @@
   --color-input: var(--border);
   --color-accent: var(--muted);
   --color-accent-foreground: var(--foreground);
-  --font-sans: Arial, Helvetica, sans-serif;
+  --font-sans: var(--font-interface);
   --radius-lg: 12px;
 }
 :root {
+  --font-interface: 'Play', Arial, Helvetica, sans-serif;
   --background: #f7f8f2;
   --foreground: #252e27;
   --popover: #fffffb;
@@ -41,7 +42,7 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-interface);
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
 }
@@ -87,7 +88,7 @@ svg {
 .brand {
   display: flex;
   align-items: center;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-interface);
   font-size: 29px;
   letter-spacing: -1.2px;
   font-weight: 700;
@@ -153,7 +154,7 @@ svg {
 }
 .eyebrow {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 1.9px;
   color: #687763;
   display: flex;
@@ -169,7 +170,7 @@ svg {
   line-height: 16px;
 }
 .intro h1 {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-interface);
   font-size: 49px;
   line-height: 1.14;
   font-weight: 400;
@@ -267,7 +268,7 @@ svg {
 .file {
   position: absolute;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   color: #557047;
   line-height: 1;
   z-index: 1;
@@ -315,7 +316,7 @@ svg {
   color: #4b7145;
 }
 .start-card h2 {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-interface);
   font-size: 31px;
   line-height: 1.15;
   font-weight: 400;
@@ -338,7 +339,7 @@ svg {
   justify-content: center;
   gap: 13px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
   width: 100%;
   transition:
     background 0.2s,
@@ -382,12 +383,12 @@ svg {
   justify-content: space-between;
 }
 .puzzle-number {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-interface);
   font-size: 13px;
   color: #7c8275;
 }
 .challenge-column > h2 {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-interface);
   font-size: 37px;
   line-height: 1.14;
   font-weight: 400;
@@ -442,7 +443,7 @@ svg {
   font-size: 10px;
 }
 .timer-digits {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-interface);
   font-size: 65px;
   letter-spacing: -1.9px;
   font-variant-numeric: tabular-nums;
@@ -503,7 +504,7 @@ svg {
 }
 .rules-compact strong {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 700;
   color: #56624f;
 }
 .rules-compact p > span {
@@ -825,7 +826,7 @@ footer > span:first-child {
 }
 .your-turn {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.6px;
   color: #54703f;
   border: 1px solid #d6e2c7;
@@ -847,7 +848,7 @@ footer > span:first-child {
 .board-instruction strong {
   font-variant-numeric: tabular-nums;
   color: #5d7450;
-  font-weight: 500;
+  font-weight: 700;
 }
 .board-result {
   position: absolute;
@@ -951,10 +952,7 @@ footer > span:first-child {
   box-shadow: 0 20px 80px #1d32172b;
 }
 .chesscape-modal [data-slot='dialog-title'] {
-  font:
-    30px/1.15 Georgia,
-    'Times New Roman',
-    serif;
+  font: 30px/1.15 var(--font-interface);
   letter-spacing: -0.7px;
   padding-right: 20px;
   color: #2f412e;
@@ -982,14 +980,14 @@ footer > span:first-child {
   gap: 15px;
 }
 .how-content li > span {
-  font: 22px Georgia;
+  font: 22px var(--font-interface);
   color: #8d9e76;
   width: 28px;
   flex-shrink: 0;
 }
 .how-content strong {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 700;
   color: #41523a;
 }
 .how-content li p {
@@ -1033,7 +1031,7 @@ footer > span:first-child {
   border: 0;
 }
 .stats-grid strong {
-  font: 36px Georgia;
+  font: 36px var(--font-interface);
   display: flex;
   gap: 5px;
   align-items: center;
@@ -1065,13 +1063,13 @@ footer > span:first-child {
   letter-spacing: 1px;
 }
 .personal-best strong {
-  font: 22px Georgia;
+  font: 22px var(--font-interface);
   color: #516940;
 }
 .stats-content h3 {
   font-size: 14px;
   margin: 22px 0 12px;
-  font-weight: 500;
+  font-weight: 700;
 }
 .empty-history {
   font-size: 14px;
@@ -1092,7 +1090,7 @@ footer > span:first-child {
 .history-list strong {
   min-width: 55px;
   text-align: right;
-  font-weight: 500;
+  font-weight: 700;
   color: #5b7548;
 }
 .history-won {
@@ -1109,7 +1107,7 @@ footer > span:first-child {
   margin: 18px auto;
 }
 .install-content h3 {
-  font: 22px Georgia;
+  font: 22px var(--font-interface);
   text-align: center;
   margin: 16px 0 24px;
 }
@@ -1119,7 +1117,7 @@ footer > span:first-child {
   color: #7d8971;
 }
 .install-content strong {
-  font-weight: 500;
+  font-weight: 700;
   color: #516249;
 }
 .notice-toast {
@@ -1470,7 +1468,7 @@ fieldset.chessboard {
     font-size: 16px;
     font-variant-numeric: tabular-nums;
     color: #41643c;
-    font-weight: 600;
+    font-weight: 700;
   }
   .mobile-timer.urgent {
     color: #a4593c;
@@ -1521,9 +1519,7 @@ fieldset.chessboard {
   scroll-margin-top: 24px;
 }
 .discovery-content h2 {
-  font:
-    400 clamp(1.6rem, 3vw, 2rem)/1.2 Georgia,
-    serif;
+  font: 400 clamp(1.6rem, 3vw, 2rem)/1.2 var(--font-interface);
   color: var(--foreground);
   margin: 10px 0 18px;
   letter-spacing: -0.5px;
@@ -1555,7 +1551,7 @@ fieldset.chessboard {
 }
 .guide-steps li::marker {
   color: var(--primary);
-  font-weight: 600;
+  font-weight: 700;
 }
 .faq-list {
   display: grid;
@@ -1571,7 +1567,7 @@ fieldset.chessboard {
   min-height: 48px;
   cursor: pointer;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.5;
   color: var(--foreground);
 }
@@ -1604,7 +1600,7 @@ fieldset.chessboard {
   gap: 6px;
   min-height: 44px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
 }
 .discovery-links {
   display: flex;
