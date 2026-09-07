@@ -1073,7 +1073,31 @@ export default function Home() {
             lowkey.tools <ArrowUpRight size={12} />
           </a>
         </span>
-        <span className="footer-center">Made for the love of the game.</span>
+        <span className="creator-credit">
+          <span>
+            Made by{' '}
+            <a
+              href="https://shrinath.me"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Shrinath Prabhu
+            </a>
+          </span>
+          <span className="credit-divider" aria-hidden="true">
+            ·
+          </span>
+          <span>
+            Creator of{' '}
+            <a
+              href="https://owleye.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              OwlEye Analytics <ArrowUpRight size={12} />
+            </a>
+          </span>
+        </span>
         <button
           className="preview-label footer-button"
           onClick={() => setModal('how')}
