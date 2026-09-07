@@ -68,7 +68,13 @@ for (const { path, response } of resources) {
   assert.ok(!response.headers.get('content-type').includes('text/html'));
 }
 const sw = await get('/sw.js');
-assert.match(sw.headers.get('cache-control') ?? '', /no-cache/);
+const swCache = sw.headers.get('cache-control') ?? '';
+// Sites can normalize no-cache into an equivalent mandatory-revalidation policy.
+assert.ok(
+  /\bno-cache\b/.test(swCache) ||
+    (/\bmax-age=0\b/.test(swCache) && /\bmust-revalidate\b/.test(swCache)),
+  'The service worker must revalidate rather than stay in a fresh cache',
+);
 const api = await get('/api/daily');
 assert.match(api.headers.get('x-robots-tag') ?? '', /noindex/);
 assert.ok((await api.json()).solutions.length > 0);
