@@ -18,7 +18,7 @@ import {
 } from '../server/service';
 function makeDb() {
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(readFileSync('.openai/drizzle/0000_spotty_junta.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0000_spotty_junta.sql', 'utf8'));
   const db = {
     prepare(sql: string) {
       let args: unknown[] = [];

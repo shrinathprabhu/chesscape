@@ -14,7 +14,8 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "verify:archive": "node scripts/verify-release-archive.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

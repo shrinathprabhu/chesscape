@@ -6,7 +6,7 @@ A daily escape-the-mate PWA. One shared position, one committed legal move, 30 s
 
 ```sh
 npm install
-npx wrangler d1 execute DB --local --config wrangler.local.json --file .openai/drizzle/0000_spotty_junta.sql
+npx wrangler d1 execute DB --local --config wrangler.local.json --file drizzle/0000_spotty_junta.sql
 npm run dev
 ```
 
@@ -48,7 +48,7 @@ A public position can be searched on Lichess or solved by an external engine. An
 
 ## Hosting and Vercel / Netlify plan
 
-The included working deployment uses the generated Sites Cloudflare Worker with D1 (`DB`). Migrations live in `.openai/drizzle/` and are packaged with the Site. There is no unconfigured production-memory fallback.
+The included working deployment uses the generated Sites Cloudflare Worker with D1 (`DB`). Source migrations live in `drizzle/`; the Sites packager copies them to `dist/.openai/drizzle/` in the release archive. `npm run verify:archive -- /path/to/release.tar.gz` checks that every generated migration and its metadata are included, byte for byte, before publishing. There is no unconfigured production-memory fallback.
 
 For Vercel or Netlify, keep the frontend and HTTP contracts, port the three small route wrappers, and implement the same prepared-statement storage calls against a durable SQL service available over HTTP (for example Turso/libSQL). Keep the schema uniqueness and conditional updates unchanged. Do not replace storage with process memory or a signed token alone: neither consumes a guess atomically across function instances. Keep database credentials server-side and use runtime secret configuration. A scheduled UTC job can warm `getDaily`; the unique day lock already prevents multiple upstream requests.
 
