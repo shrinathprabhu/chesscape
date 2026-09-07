@@ -1,6 +1,6 @@
 /* Solutions stay in page memory; cache only the app shell and static assets. */
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
-const VERSION = `chesscape-shell-v3-${BASE || 'root'}`;
+const VERSION = `chesscape-shell-v4-${BASE || 'root'}`;
 const scoped = (path) => `${BASE}${path}`;
 const SHELL = [
   scoped('/'),
@@ -26,7 +26,12 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith('chesscape-') && key !== VERSION)
+            .filter(
+              (key) =>
+                key.startsWith('chesscape-shell-') &&
+                key.endsWith(`-${BASE || 'root'}`) &&
+                key !== VERSION,
+            )
             .map((key) => caches.delete(key)),
         ),
       )
@@ -77,21 +82,34 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  if (!/\.(?:js|css|svg|png|webp|webmanifest|woff2?)$/.test(url.pathname))
+  if (
+    url.pathname === scoped('/sw.js') ||
+    !/\.(?:js|css|svg|png|webp|webmanifest|woff2?)$/.test(url.pathname)
+  )
     return;
+  const update = async () => {
+    const response = await fetch(request);
+    if (
+      response.ok &&
+      !/\bno-store\b/.test(response.headers.get('Cache-Control') || '')
+    ) {
+      const copy = response.clone();
+      event.waitUntil(
+        caches.open(VERSION).then((cache) => cache.put(request, copy)),
+      );
+    }
+    return response;
+  };
+  // Only content-hashed bundles/fonts are immutable. Icons, pieces and the
+  // install manifest check the network so an update cannot stay cached forever.
+  const hashed = url.pathname.startsWith(scoped('/_next/static/'));
   event.respondWith(
-    caches.match(request).then(
-      (cached) =>
-        cached ||
-        fetch(request).then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            event.waitUntil(
-              caches.open(VERSION).then((cache) => cache.put(request, copy)),
-            );
-          }
-          return response;
+    hashed
+      ? caches.match(request).then((cached) => cached || update())
+      : update().catch(async (error) => {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          throw error;
         }),
-    ),
   );
 });

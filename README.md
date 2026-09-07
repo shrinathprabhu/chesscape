@@ -28,7 +28,7 @@ Once loaded, starting, moving, timing out, and retrying perform no network reque
 
 Progress and personal history are saved under `chesscape-progress-v2` in this browser's localStorage. An unfinished puzzle stays pinned across visits, even across midnight. Reloading fetches `GET /api/daily?day=YYYY-MM-DD` for that saved puzzle and restores the active deadline or result. After a solve, the next puzzle unlocks at the following midnight UTC, based on the completion date. Reloading or reopening the page does not reset that cooldown. Clearing site data or switching browsers starts fresh.
 
-Solutions and reply maps remain in the active page's memory and are excluded from saved progress, browser HTTP caching, and service-worker caches. The public daily response can be cached by the CDN until midnight, and by each Worker instance. A loaded puzzle works offline in the same tab. Reopening the app or loading another puzzle requires a connection. The share card uses the local elapsed time.
+Solutions and reply maps remain in the active page's memory and are excluded from saved progress, browser HTTP caching (`Cache-Control: no-store`), and service-worker caches. The public daily response advertises a separate CDN TTL ending at midnight, and each Worker instance retains a bounded in-memory puzzle cache. A loaded puzzle works offline in the same tab. Reopening the app or loading another puzzle requires a connection. The share card uses the local elapsed time.
 
 The former start and submit endpoints have been removed. Existing database migrations and historical `attempts` records are retained for compatibility; the app no longer reads or writes player attempts or cookies. Local history begins with this release. The old `rate_limits` table now provides only a unique, expiring daily upstream-fetch lock.
 
@@ -45,6 +45,29 @@ The launch fallback pack contains original compositions with file/color transfor
 The working Sites deployment uses a Cloudflare Worker with D1 (`DB`). Source migrations live in `drizzle/`; the Sites packager copies them to `dist/.openai/drizzle/`. `npm run verify:archive -- /path/to/release.tar.gz` checks that every migration and metadata file is included unchanged before publishing.
 
 A Vercel or Netlify port needs only the daily GET route and durable daily puzzle storage. Keep the unique date and atomic publish behavior; process memory alone cannot keep all function instances on one puzzle. CDN caching and the daily upstream lock limit repeated work. Provider-level flood protection can cover requests to the public daily endpoint.
+
+## Security headers, caches and Vercel rules
+
+`config/http.mjs` is the shared policy used by `next.config.ts`, the generated Cloudflare static `_headers`, and `vercel.json`. It sets CSP, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, strict-origin referrers, same-origin opener isolation, and restricted camera/microphone/location/payment/USB permissions. Clipboard writing and native sharing remain available on the same origin. HTTPS responses include one-year HSTS without preloading or imposing a subdomain policy on the shared host. HSTS itself applies to the entire hostname, even when delivered at a subpath.
+
+The production CSP limits resource and API origins to this site, permits local blob/data images for sharing, blocks plugins/frames/inline event attributes, and excludes `unsafe-eval`. The current streaming renderer needs inline hydration scripts and component styles, so these use `unsafe-inline`; this is a baseline CSP, not a strict nonce-based XSS policy. Only development allows eval and WebSocket connections for HMR. See [Vercel's CSP guidance](https://vercel.com/docs/cdn-security/security-headers).
+
+| Resource | Cache policy |
+| --- | --- |
+| Content-hashed JS, CSS and Play fonts | One year, immutable |
+| Game HTML | HTTP no-store; service-worker app shell retained explicitly for offline use |
+| Piece images and install icons | One hour, then revalidate |
+| Service worker | Revalidate every time; no CDN storage |
+| Install manifest | Revalidate every time |
+| Crawl guides and sitemap | One hour |
+| Successful daily puzzle | Browser no-store; CDN-only TTL capped at next UTC midnight (one day for saved historical dates) |
+| Invalid, missing or failed API responses | No storage in browser or CDN |
+
+The daily response uses `CDN-Cache-Control` and `Vercel-CDN-Cache-Control` separately from browser `Cache-Control`, following [Vercel's header precedence](https://vercel.com/docs/caching/cache-control-headers). No stale-while-revalidate window is added to the daily puzzle. CDN providers must support the targeted headers to use that edge cache; the bounded Worker cache and durable daily publication remain the fallback. Duplicate/unknown query parameters and invalid or future dates fail before database access. The service worker ignores APIs, checks mutable assets against the network with an offline fallback, and uses cache-first only for hashed assets. Cache cleanup is restricted to its own mount.
+
+`vercel.json` contains **host rules for the intended `/chesscape` mount**, including a host-conditional permanent redirect from `chesscape.lowkey.tools` to `https://lowkey.tools/chesscape`. Other lowkey.tools routes are outside these header rules. Regenerate with `npm run config:vercel` after changing the shared policy. Merge its headers and redirects into the lowkey.tools Vercel project when connecting the public app; preserve its other tools' settings and the `/chesscape/` PWA start URL. The schema and routing syntax follow [Vercel's configuration reference](https://vercel.com/docs/project-configuration/vercel-json).
+
+These rules do not convert the current Worker/D1 build into a Vercel Function. There is intentionally no rewrite to the private Sites preview, no invented public origin, and no framework/build override for an unimplemented port. Supply the public Worker origin and route the mounted requests there, or port the daily route and its atomic storage before deploying natively to Vercel. Vercel firewall, rate limits and spend controls are account/project settings; they have not been enabled from this repository. The application already limits upstream puzzle fetching to once per UTC date, but that is not a network flood limit.
 
 ## Discoverability, mobile, and PWA
 
@@ -87,6 +110,9 @@ npm run typecheck
 npm run lint
 npm run build
 node scripts/check-client-boundary.mjs
+node scripts/generate-vercel-config.mjs --check
+# Against a running production build (root or with NEXT_PUBLIC_BASE_PATH=/chesscape):
+npm run check:http
 # Against a running origin-root development server:
 node scripts/check-discovery.mjs
 # Against a development server started with the same mount configuration:

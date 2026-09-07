@@ -6,14 +6,18 @@ import {
   type DailyRow,
 } from '@/server/service';
 import type { PuzzlePayload } from '@/lib/contracts';
+import { noStore, puzzleCacheHeaders } from '@/lib/http-cache';
 
 // Puzzle responses contain no player data and can be shared across visitors.
 const cached = new Map<string, Promise<PuzzlePayload>>();
 export async function GET(request: Request) {
   const today = utcDay();
-  const requested = new URL(request.url).searchParams.get('day');
+  const params = new URL(request.url).searchParams;
+  const requested = params.get('day');
   const day = requested ?? today;
   if (
+    params.getAll('day').length > 1 ||
+    [...params.keys()].some((key) => key !== 'day') ||
     !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
     !Number.isFinite(Date.parse(day)) ||
     utcDay(Date.parse(day)) !== day ||
@@ -21,7 +25,7 @@ export async function GET(request: Request) {
   )
     return Response.json(
       { error: 'That puzzle date is not available.' },
-      { status: 400, headers: { 'Cache-Control': 'no-store' } },
+      { status: 400, headers: noStore },
     );
   try {
     let loading = cached.get(day);
@@ -43,13 +47,11 @@ export async function GET(request: Request) {
     }
     const puzzle = await loading;
     // Browser state is local; only this shared puzzle crosses the network once.
-    const ttl =
-      day === today
-        ? Math.max(0, Math.floor((puzzle.resetsAt - Date.now()) / 1000))
-        : 86400;
     return Response.json(puzzle, {
       headers: {
-        'Cache-Control': `public, max-age=0, s-maxage=${ttl}`,
+        ...puzzleCacheHeaders(
+          day === today ? puzzle.resetsAt : Date.now() + 86400000,
+        ),
         'X-Content-Type-Options': 'nosniff',
       },
     });
@@ -68,7 +70,7 @@ export async function GET(request: Request) {
           ? 'Your saved puzzle is unavailable. Please try again later.'
           : 'Could not load your escape. Please try again.',
       },
-      { status: missing ? 404 : 503, headers: { 'Cache-Control': 'no-store' } },
+      { status: missing ? 404 : 503, headers: noStore },
     );
   }
 }
