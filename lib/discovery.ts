@@ -20,6 +20,12 @@ export const faqs = [
       'Yes. Every retry uses the same starting position and a fresh 30 seconds. Your unfinished puzzle stays saved in this browser across visits, even after midnight. Refreshing an active round keeps its original deadline.',
   },
   {
+    id: 'win-mode',
+    question: 'What is Win it mode?',
+    answer:
+      'After you solve the daily escape, Win it lets you play the same position to the end against a computer opponent running on your device. The clock starts at 0:00, runs only while it is your move and has no limit. Checkmate wins; a loss, draw or resignation lets you restart from the escape position. Your fastest win for each puzzle is saved in this browser. Some positions leave you down material after the escape, so not every day is an easy win.',
+  },
+  {
     id: 'next-puzzle',
     question: 'When does the next Chesscape puzzle unlock?',
     answer:

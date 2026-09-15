@@ -29,6 +29,16 @@ Progress and personal history are saved under `chesscape-progress-v2` in this br
 
 Solutions and reply maps remain in the active page's memory and are excluded from saved progress, browser HTTP caching (`Cache-Control: no-store`), and service-worker caches. The public daily response advertises a separate CDN TTL ending at midnight, while the Worker reads its bundled puzzle collection. A loaded puzzle works offline in the same tab. Reopening the app or loading another puzzle requires a connection. The share card uses the local elapsed time.
 
+## Win it mode
+
+After the daily escape is solved, a second mode plays the same position to the end against an on-device computer. The clock starts at 0:00, runs only on the player's turn (computer thinking time is excluded) and has no limit. Checkmate wins; checkmate by the computer, stalemate, repetition, insufficient material, the fifty-move rule or resigning ends the game and allows a restart from the escape position. Win mode stays locked until the escape is solved, so it never reveals the timed puzzle.
+
+The opponent in `lib/engine.ts` is a small deterministic alpha-beta search (fixed `ENGINE_DEPTH` plies plus capture quiescence) over its own 0x88 move generator, which tests check against standard perft counts. chess.js remains the legality authority for every move shown on the board. Fixed depth means the same reply on every device, so times are comparable. The search runs on the main thread in a few milliseconds; there are no network requests.
+
+Win progress is saved separately under `chesscape-win-v1`: the current game (start FEN, move list, clock) and the fastest win per puzzle day. Saved move lists are replayed on load and rejected if they do not reach the saved position. While a Win game is unfinished, automatic refreshes keep its puzzle loaded; the manual "Load your next escape" button still moves on.
+
+The escape collection only guarantees that the accepted moves avoid mate in one. In several positions the player remains well behind in material afterwards, so a win can be very hard on those days.
+
 ## Daily puzzle selection
 
 The UTC day number selects one of 16 precomputed original positions from `server/puzzles-v1.json`. Each has one or two safe moves and an immediate mating reply for every other legal move. Selection does not access a database, fetch Lichess, or run chess search. Everyone on the same date receives the same position across requests, Worker instances, and deployments.

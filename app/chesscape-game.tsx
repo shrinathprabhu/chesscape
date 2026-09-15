@@ -25,6 +25,10 @@ import {
   LoaderCircle,
   Smartphone,
   X,
+  Swords,
+  Flag,
+  Bot,
+  Lock,
 } from 'lucide-react';
 import {
   Dialog,
@@ -43,7 +47,30 @@ import {
   recordAttempt,
   saveProgress,
 } from '@/lib/local-game';
-import { createShareImage, downloadBlob, shareText } from '@/lib/share';
+import {
+  createShareImage,
+  createWinShareImage,
+  downloadBlob,
+  shareText,
+  winShareText,
+} from '@/lib/share';
+import { ENGINE_DEPTH, chooseMove } from '@/lib/engine';
+import {
+  bestWin,
+  createWinGame,
+  emptyWinProgress,
+  formatClock,
+  playComputerMove,
+  playWinMove,
+  playerMoveCount,
+  readWinProgress,
+  recordWinGame,
+  resignWinGame,
+  saveWinProgress,
+  winClock,
+  type WinGame,
+  type WinProgress,
+} from '@/lib/win-game';
 import type { Attempt, DailyChallenge, LocalProgress } from '@/lib/contracts';
 
 type InstallEvent = Event & {
@@ -51,6 +78,13 @@ type InstallEvent = Event & {
   userChoice: Promise<{ outcome: string }>;
 };
 type Modal = 'how' | 'stats' | 'install' | 'share' | null;
+type Mode = 'escape' | 'win';
+const drawReasons: Record<string, string> = {
+  stalemate: 'stalemate',
+  repetition: 'threefold repetition',
+  insufficient: 'insufficient material',
+  'fifty-moves': 'the fifty-move rule',
+};
 const names: Record<string, string> = {
   p: 'pawn',
   n: 'knight',
@@ -68,6 +102,8 @@ const badgeFor = (ms: number) =>
 function seconds(ms: number) {
   return (ms / 1000).toFixed(2);
 }
+// Computer replies wait briefly so they read as a move, not a flicker.
+const COMPUTER_DELAY_MS = 450;
 
 export default function ChesscapeGame({
   children,
@@ -95,6 +131,11 @@ export default function ChesscapeGame({
   const [shareBusy, setShareBusy] = useState(false);
   const [now, setNow] = useState(0);
   const [focusedSquare, setFocusedSquare] = useState('a8');
+  const [mode, setMode] = useState<Mode>('escape');
+  const [winProgress, setWinProgress] = useState<WinProgress>(emptyWinProgress);
+  const [clockNow, setClockNow] = useState(0);
+  const [shareKind, setShareKind] = useState<Mode>('escape');
+  const winRef = useRef<WinProgress>(emptyWinProgress());
   const deadline = useRef(0);
   const operation = useRef(false);
   const progressRef = useRef<LocalProgress | null>(null);
@@ -109,9 +150,22 @@ export default function ChesscapeGame({
   const playing = attempt?.status === 'playing';
   const done = !!attempt && !playing;
   const won = attempt?.status === 'won';
+  const winMode = mode === 'win';
+  // Win mode unlocks once today's escape is solved, so it never spoils the timed puzzle.
+  const win =
+    daily && winProgress.game?.day === daily.day ? winProgress.game : null;
+  const winPlaying = win?.status === 'playing';
+  const winDone = !!win && !winPlaying;
+  const winWon = win?.status === 'won';
+  const computerTurn =
+    !!win && winPlaying && new Chess(win.fen).turn() !== win.side;
+  const boardFen = winMode
+    ? (win?.fen ?? (won ? daily?.fen : undefined))
+    : attempt?.fen;
+  const canMove = winMode ? winPlaying && !computerTurn : playing;
   const game = useMemo(
-    () => new Chess(attempt?.fen ?? DEFAULT_POSITION),
-    [attempt?.fen],
+    () => new Chess(boardFen ?? DEFAULT_POSITION),
+    [boardFen],
   );
   const initialSide = useMemo(
     () => new Chess(daily?.fen ?? DEFAULT_POSITION).turn(),
@@ -119,10 +173,10 @@ export default function ChesscapeGame({
   );
   const legal = useMemo(
     () =>
-      playing && selected
+      canMove && selected
         ? game.moves({ square: selected, verbose: true })
         : [],
-    [game, selected, playing],
+    [game, selected, canMove],
   );
   const squares = useMemo(() => {
     const list = Array.from(
@@ -161,77 +215,110 @@ export default function ChesscapeGame({
       );
     }
   }, []);
-  const refresh = useCallback(async () => {
-    if (operation.current) return;
-    if (!restored.current) {
-      restored.current = true;
-      try {
-        progressRef.current = readProgress(localStorage);
-      } catch {}
-    }
-    const progress = progressRef.current;
-    if (dailyRef.current && !needsNewPuzzle(progress)) {
-      const current = attemptRef.current;
-      if (current) {
-        const expired = expireAttempt(current);
-        if (expired !== current) acceptAttempt(expired);
-      }
-      return;
-    }
-    operation.current = true;
-    lastRefresh.current = Date.now();
-    setBusy(true);
+  const acceptWin = useCallback((value: WinGame) => {
+    const progress = recordWinGame(winRef.current, value);
+    winRef.current = progress;
+    setWinProgress(progress);
+    setClockNow(Date.now());
+    setSelected(null);
+    setPromotion(null);
     try {
-      const puzzle = await getChallenge(
-        needsNewPuzzle(progress) ? undefined : progress?.day,
+      saveWinProgress(localStorage, progress);
+    } catch {
+      setNotice(
+        'Browser storage is unavailable. Keep this tab open to keep your game.',
       );
-      let next: LocalProgress = {
-        version: 2,
-        day: puzzle.day,
-        history: progress?.history ?? [],
-        attempt: progress?.day === puzzle.day ? progress.attempt : null,
-        nextAvailableAt:
-          progress?.day === puzzle.day ? progress.nextAvailableAt : null,
-      };
-      if (next.attempt) next = recordAttempt(next, expireAttempt(next.attempt));
-      progressRef.current = next;
-      const value: DailyChallenge = {
-        ...puzzle,
-        attempt: next.attempt,
-        stats: progressStats(next),
-        resetsAt: next.nextAvailableAt ?? puzzle.resetsAt,
-      };
-      dailyRef.current = value;
-      setDaily(value);
-      setLoadError('');
-      try {
-        saveProgress(localStorage, next);
-      } catch {
-        setNotice(
-          'Browser storage is unavailable. Keep this tab open to keep your progress.',
-        );
-      }
-      if (value.attempt) {
-        acceptAttempt(value.attempt);
-        setFlipped(new Chess(puzzle.fen).turn() === 'b');
-      } else {
-        attemptRef.current = null;
-        setAttempt(null);
-        setRemaining(30000);
-        setSelected(null);
-        setPromotion(null);
-      }
-    } catch (error) {
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : 'Could not load today’s escape.',
-      );
-    } finally {
-      operation.current = false;
-      setBusy(false);
     }
-  }, [acceptAttempt]);
+  }, []);
+  const refresh = useCallback(
+    async (manual = false) => {
+      if (operation.current) return;
+      if (!restored.current) {
+        restored.current = true;
+        try {
+          progressRef.current = readProgress(localStorage);
+          const saved = readWinProgress(localStorage);
+          if (saved) {
+            winRef.current = saved;
+            setWinProgress(saved);
+          }
+        } catch {}
+      }
+      const progress = progressRef.current;
+      if (dailyRef.current && !needsNewPuzzle(progress)) {
+        const current = attemptRef.current;
+        if (current) {
+          const expired = expireAttempt(current);
+          if (expired !== current) acceptAttempt(expired);
+        }
+        return;
+      }
+      // An unfinished Win game keeps its puzzle until it ends or the player moves on.
+      const activeWin = winRef.current.game;
+      if (
+        !manual &&
+        dailyRef.current &&
+        activeWin?.status === 'playing' &&
+        activeWin.day === dailyRef.current.day
+      )
+        return;
+      operation.current = true;
+      lastRefresh.current = Date.now();
+      setBusy(true);
+      try {
+        const puzzle = await getChallenge(
+          needsNewPuzzle(progress) ? undefined : progress?.day,
+        );
+        let next: LocalProgress = {
+          version: 2,
+          day: puzzle.day,
+          history: progress?.history ?? [],
+          attempt: progress?.day === puzzle.day ? progress.attempt : null,
+          nextAvailableAt:
+            progress?.day === puzzle.day ? progress.nextAvailableAt : null,
+        };
+        if (next.attempt)
+          next = recordAttempt(next, expireAttempt(next.attempt));
+        progressRef.current = next;
+        const value: DailyChallenge = {
+          ...puzzle,
+          attempt: next.attempt,
+          stats: progressStats(next),
+          resetsAt: next.nextAvailableAt ?? puzzle.resetsAt,
+        };
+        dailyRef.current = value;
+        setDaily(value);
+        setLoadError('');
+        try {
+          saveProgress(localStorage, next);
+        } catch {
+          setNotice(
+            'Browser storage is unavailable. Keep this tab open to keep your progress.',
+          );
+        }
+        if (value.attempt) {
+          acceptAttempt(value.attempt);
+          setFlipped(new Chess(puzzle.fen).turn() === 'b');
+        } else {
+          attemptRef.current = null;
+          setAttempt(null);
+          setRemaining(30000);
+          setSelected(null);
+          setPromotion(null);
+        }
+      } catch (error) {
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : 'Could not load today’s escape.',
+        );
+      } finally {
+        operation.current = false;
+        setBusy(false);
+      }
+    },
+    [acceptAttempt],
+  );
   useEffect(() => {
     queueMicrotask(() => {
       void refresh();
@@ -325,6 +412,11 @@ export default function ChesscapeGame({
     },
     [shareUrl],
   );
+  useEffect(() => {
+    if (!winPlaying) return;
+    const tick = window.setInterval(() => setClockNow(Date.now()), 100);
+    return () => window.clearInterval(tick);
+  }, [winPlaying]);
 
   const playTone = useCallback(
     (success?: boolean) => {
@@ -357,6 +449,49 @@ export default function ChesscapeGame({
     },
     [sound],
   );
+  const toneRef = useRef(playTone);
+  useEffect(() => {
+    toneRef.current = playTone;
+  });
+  useEffect(() => {
+    if (!win || !computerTurn) return;
+    const timer = window.setTimeout(() => {
+      const current = winRef.current.game;
+      if (current?.id !== win.id || current.fen !== win.fen) return;
+      const reply = chooseMove(current.fen);
+      if (!reply) return;
+      const value = playComputerMove(current, reply);
+      acceptWin(value);
+      toneRef.current(value.status === 'lost' ? false : undefined);
+    }, COMPUTER_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [win, computerTurn, acceptWin]);
+  function startWin() {
+    const puzzle = dailyRef.current;
+    const current = winRef.current.game;
+    if (
+      !puzzle ||
+      attemptRef.current?.status !== 'won' ||
+      (current?.status === 'playing' && current.day === puzzle.day)
+    )
+      return;
+    const value = createWinGame(puzzle);
+    acceptWin(value);
+    setFlipped(value.side === 'b');
+    playTone();
+  }
+  function resignWin() {
+    const current = winRef.current.game;
+    if (current?.status !== 'playing') return;
+    acceptWin(resignWinGame(current));
+    playTone(false);
+  }
+  function switchMode(next: Mode) {
+    if (next === mode) return;
+    setMode(next);
+    setSelected(null);
+    setPromotion(null);
+  }
   function start() {
     if (
       operation.current ||
@@ -388,9 +523,23 @@ export default function ChesscapeGame({
     },
     [acceptAttempt, playTone, notify],
   );
+  const commitWin = useCallback(
+    (from: Square, to: Square, promote?: string) => {
+      const current = winRef.current.game;
+      if (current?.status !== 'playing') return;
+      try {
+        const value = playWinMove(current, { from, to, promotion: promote });
+        acceptWin(value);
+        playTone(value.status === 'won' ? true : undefined);
+      } catch {
+        notify('That move is not legal. Choose a highlighted square.');
+      }
+    },
+    [acceptWin, playTone, notify],
+  );
   const choose = useCallback(
     (square: Square, dragFrom?: Square) => {
-      if (!playing || busy) return;
+      if (!canMove || busy) return;
       const from = dragFrom ?? selected;
       if (from && from !== square) {
         const moves = game
@@ -401,7 +550,8 @@ export default function ChesscapeGame({
             setPromotion({ from, to: square });
             return;
           }
-          commit(from, square);
+          if (winMode) commitWin(from, square);
+          else commit(from, square);
           return;
         }
       }
@@ -411,14 +561,21 @@ export default function ChesscapeGame({
         playTone();
       } else setSelected(null);
     },
-    [playing, busy, selected, game, commit, playTone],
+    [canMove, busy, selected, game, commit, commitWin, winMode, playTone],
   );
-  async function openShare() {
-    if (!won || !attempt || !daily) return;
+  async function openShare(kind: Mode = 'escape') {
+    if (!daily || (kind === 'escape' ? !won || !attempt : !winWon || !win))
+      return;
+    setShareKind(kind);
+    setShareBlob(null);
+    setShareUrl(null);
     setModal('share');
     setShareBusy(true);
     try {
-      const blob = await createShareImage(attempt, daily.number);
+      const blob =
+        kind === 'win' && win
+          ? await createWinShareImage(win, daily.number)
+          : await createShareImage(attempt!, daily.number);
       setShareBlob(blob);
       setShareUrl(URL.createObjectURL(blob));
     } catch (error) {
@@ -431,26 +588,41 @@ export default function ChesscapeGame({
       setShareBusy(false);
     }
   }
+  const currentShareText = () =>
+    !daily
+      ? null
+      : shareKind === 'win'
+        ? win && winShareText(win, daily.number)
+        : attempt && shareText(attempt, daily.number);
+  const shareFileName =
+    shareKind === 'win'
+      ? `chesscape-win-${win?.day}.png`
+      : `chesscape-${attempt?.day}.png`;
   async function copyShare() {
-    if (!attempt || !daily) return;
+    const text = currentShareText();
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(shareText(attempt, daily.number));
+      await navigator.clipboard.writeText(text);
       notify('Your escape is copied. Go claim those bragging rights.');
     } catch {
       notify('Copy is unavailable here. You can download your result image.');
     }
   }
   async function nativeShare() {
-    if (!shareBlob || !attempt || !daily) return;
-    const file = new File([shareBlob], `chesscape-${attempt.day}.png`, {
+    const text = currentShareText();
+    if (!shareBlob || !text) return;
+    const file = new File([shareBlob], shareFileName, {
       type: 'image/png',
     });
     try {
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: 'I escaped Chesscape',
-          text: shareText(attempt, daily.number),
+          title:
+            shareKind === 'win'
+              ? 'I beat the computer in Chesscape'
+              : 'I escaped Chesscape',
+          text,
         });
       } else {
         await copyShare();
@@ -589,15 +761,20 @@ export default function ChesscapeGame({
   }, []);
   // The 64-square board is reused while timer digits tick; only board state redraws it.
   const kingInCheck = useMemo(() => game.isCheck(), [game]);
+  const lastMove = winMode ? win?.moves.at(-1) : undefined;
   const board = useMemo(
     () => (
       <fieldset
         className="chessboard"
         ref={boardRef}
         aria-label={
-          attempt
-            ? `Chessboard. ${initialSide === 'w' ? 'White' : 'Black'} to escape.`
-            : 'Concealed challenge. Start to reveal the position.'
+          winMode
+            ? win
+              ? `Chessboard. You play ${win.side === 'w' ? 'white' : 'black'} against the computer.`
+              : 'Win mode chessboard. Start a game to play.'
+            : attempt
+              ? `Chessboard. ${initialSide === 'w' ? 'White' : 'Black'} to escape.`
+              : 'Concealed challenge. Start to reveal the position.'
         }
       >
         {squares.map((square, index) => {
@@ -611,14 +788,20 @@ export default function ChesscapeGame({
             kingInCheck;
           const light =
             (Number(square[1]) + 'abcdefgh'.indexOf(square[0])) % 2 === 0;
+          const isLast =
+            !!lastMove &&
+            (lastMove.slice(0, 2) === square ||
+              lastMove.slice(2, 4) === square);
           return (
             <button
               key={square}
-              className={`square ${light ? 'light-square' : 'dark-square'} ${isSelected ? 'selected-square' : ''} ${isLegal ? 'legal-square' : ''} ${inCheck ? 'check-square' : ''}`}
+              className={`square ${light ? 'light-square' : 'dark-square'} ${isSelected ? 'selected-square' : ''} ${isLegal ? 'legal-square' : ''} ${inCheck ? 'check-square' : ''} ${isLast ? 'last-move-square' : ''}`}
               aria-label={`${square}${piece ? `, ${piece.color === 'w' ? 'white' : 'black'} ${names[piece.type]}` : ', empty'}${isLegal ? ', legal destination' : ''}${inCheck ? ', in check' : ''}`}
               aria-pressed={isSelected}
-              aria-disabled={!playing || busy}
-              tabIndex={attempt && square === focusedSquare ? 0 : -1}
+              aria-disabled={!canMove || busy}
+              tabIndex={
+                (winMode ? win : attempt) && square === focusedSquare ? 0 : -1
+              }
               data-square={square}
               onFocus={() => setFocusedSquare(square)}
               onClick={() => choose(square)}
@@ -647,14 +830,14 @@ export default function ChesscapeGame({
                     ?.focus();
                 }
               }}
-              draggable={!!(playing && !busy && piece?.color === game.turn())}
+              draggable={!!(canMove && !busy && piece?.color === game.turn())}
               onDragStart={(event) => {
                 event.dataTransfer.setData('text/plain', square);
                 event.dataTransfer.effectAllowed = 'move';
                 setSelected(square);
               }}
               onDragOver={(event) => {
-                if (playing) event.preventDefault();
+                if (canMove) event.preventDefault();
               }}
               onDrop={(event) => {
                 event.preventDefault();
@@ -694,19 +877,37 @@ export default function ChesscapeGame({
     ),
     [
       attempt,
+      win,
+      winMode,
+      lastMove,
       game,
       kingInCheck,
       initialSide,
       squares,
       legal,
       selected,
-      playing,
+      canMove,
       busy,
       focusedSquare,
       choose,
     ],
   );
   const shownTime = done ? (attempt.elapsedMs ?? 30000) : remaining;
+  const winShown = win ? winClock(win, Math.max(clockNow, win.updatedAt)) : 0;
+  const [winMinutes, winRest] = formatClock(winShown).split(':');
+  const [winSeconds, winFraction] = winRest.split('.');
+  const winBest = daily ? bestWin(winProgress, daily.day) : null;
+  const winBestEver = bestWin(winProgress);
+  const winMoves = win ? playerMoveCount(win) : 0;
+  const winResultText = !win
+    ? ''
+    : win.status === 'won'
+      ? `Checkmate. You won in ${formatClock(win.elapsedMs)}.`
+      : win.reason === 'resigned'
+        ? 'You resigned. The position is waiting for a rematch.'
+        : win.status === 'lost'
+          ? 'Checkmated. The computer found its way through.'
+          : `Draw by ${drawReasons[win.reason ?? ''] ?? 'agreement'}. Only checkmate wins.`;
   const timeParts = seconds(shownTime).split('.');
   const untilReset = daily && now ? Math.max(0, daily.resetsAt - now) : 0;
   const resetClock = `${String(Math.floor(untilReset / 3600000)).padStart(2, '0')}:${String(Math.floor(untilReset / 60000) % 60).padStart(2, '0')}:${String(Math.floor(untilReset / 1000) % 60).padStart(2, '0')}`;
@@ -804,9 +1005,39 @@ export default function ChesscapeGame({
               : 'You’re offline. Reconnect to load your saved escape.'}
           </output>
         )}
+        <fieldset className="mode-switch" aria-label="Game mode">
+          <button
+            className={`mode-tab ${!winMode ? 'mode-active' : ''}`}
+            aria-pressed={!winMode}
+            onClick={() => switchMode('escape')}
+          >
+            <ShieldCheck size={16} />
+            <span>
+              <strong>Escape</strong>
+              <small>One move · 30 seconds</small>
+            </span>
+          </button>
+          <button
+            className={`mode-tab ${winMode ? 'mode-active' : ''}`}
+            aria-pressed={winMode}
+            disabled={playing}
+            title={playing ? 'Finish this escape first.' : undefined}
+            onClick={() => switchMode('win')}
+          >
+            {won ? <Swords size={16} /> : <Lock size={16} />}
+            <span>
+              <strong>Win it</strong>
+              <small>
+                {won
+                  ? 'Beat the computer · no limit'
+                  : 'Unlocks after your escape'}
+              </small>
+            </span>
+          </button>
+        </fieldset>
         <div className="game-layout">
           <section
-            className={`board-column ${playing ? 'playing-column' : ''}`}
+            className={`board-column ${playing || winPlaying ? 'playing-column' : ''}`}
             aria-label="Daily chess puzzle"
           >
             <div className="board-top">
@@ -814,13 +1045,27 @@ export default function ChesscapeGame({
                 <span
                   className={`player-dot ${initialSide === 'w' ? 'black-dot' : 'white-dot'}`}
                 />{' '}
-                The opponent
+                {winMode ? (
+                  <>
+                    <Bot size={15} /> The computer
+                    {computerTurn && (
+                      <span className="your-turn thinking-tag">THINKING</span>
+                    )}
+                  </>
+                ) : (
+                  'The opponent'
+                )}
               </span>
               <span className="mini-tag">
-                {dayLabel} <span className="tag-divider">/</span> THE DAILY
-                ESCAPE
+                {dayLabel} <span className="tag-divider">/</span>{' '}
+                {winMode ? 'WIN IT' : 'THE DAILY ESCAPE'}
               </span>
-              {playing && (
+              {winMode && winPlaying && (
+                <span className="mobile-timer">
+                  <Clock3 size={15} /> {formatClock(winShown)}
+                </span>
+              )}
+              {!winMode && playing && (
                 <span
                   className={`mobile-timer ${remaining < 10000 ? 'urgent' : ''}`}
                 >
@@ -829,10 +1074,75 @@ export default function ChesscapeGame({
               )}
             </div>
             <div
-              className={`board-frame ${playing ? 'is-playing' : ''} ${won ? 'is-won' : ''}`}
+              className={`board-frame ${(winMode ? winPlaying : playing) ? 'is-playing' : ''} ${(winMode ? winWon : won) ? 'is-won' : ''}`}
             >
               {board}
-              {!attempt && (
+              {winMode && !win && (
+                <div className="board-cover">
+                  <div className="start-card">
+                    <span className="start-icon">
+                      {won ? <Swords size={25} /> : <Lock size={25} />}
+                    </span>
+                    <h2>
+                      {won ? (
+                        <>
+                          You escaped.
+                          <br />
+                          Now win it.
+                        </>
+                      ) : (
+                        <>
+                          Escape first.
+                          <br />
+                          Then win it.
+                        </>
+                      )}
+                    </h2>
+                    <p>
+                      {won ? (
+                        <>
+                          Same position, played to the end.
+                          <br />
+                          Checkmate the computer, fast.
+                        </>
+                      ) : (
+                        <>
+                          Solve today’s one-move escape
+                          <br />
+                          to play it out against the computer.
+                        </>
+                      )}
+                    </p>
+                    {won ? (
+                      <button className="primary-button" onClick={startWin}>
+                        Start the game <ArrowRight size={17} />
+                      </button>
+                    ) : (
+                      <button
+                        className="primary-button"
+                        onClick={() => switchMode('escape')}
+                      >
+                        Go to today’s escape <ArrowRight size={17} />
+                      </button>
+                    )}
+                    <span className="start-caption">
+                      <Clock3 size={12} />{' '}
+                      {won
+                        ? 'Clock starts at 0:00 and runs only on your move.'
+                        : 'No spoilers: the position stays hidden until you start.'}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {winMode && winDone && (
+                <output
+                  className={`board-result ${winWon ? 'result-success' : ''}`}
+                >
+                  {winWon ? <Trophy size={19} /> : <Flag size={19} />}
+                  <span>{winResultText}</span>
+                </output>
+              )}
+              {!winMode && !attempt && (
                 <div className="board-cover">
                   <div className="start-card">
                     <span className="start-icon">
@@ -874,7 +1184,7 @@ export default function ChesscapeGame({
                     {loadError ? (
                       <button
                         className="retry-link"
-                        onClick={() => void refresh()}
+                        onClick={() => void refresh(true)}
                       >
                         Try again <RotateCw size={12} />
                       </button>
@@ -886,7 +1196,7 @@ export default function ChesscapeGame({
                   </div>
                 </div>
               )}
-              {done && (
+              {!winMode && done && (
                 <output
                   className={`board-result ${won ? 'result-success' : ''}`}
                 >
@@ -906,10 +1216,23 @@ export default function ChesscapeGame({
                 <span
                   className={`player-dot ${initialSide === 'w' ? 'white-dot' : 'black-dot'}`}
                 />{' '}
-                {attempt
-                  ? `You play ${initialSide === 'w' ? 'white' : 'black'}`
-                  : 'Your color is revealed at the start'}
-                {playing && <span className="your-turn">YOUR MOVE</span>}
+                {winMode ? (
+                  <>
+                    {won
+                      ? `You play ${initialSide === 'w' ? 'white' : 'black'}`
+                      : 'Your color is revealed after your escape'}
+                    {winPlaying && !computerTurn && (
+                      <span className="your-turn">YOUR MOVE</span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {attempt
+                      ? `You play ${initialSide === 'w' ? 'white' : 'black'}`
+                      : 'Your color is revealed at the start'}
+                    {playing && <span className="your-turn">YOUR MOVE</span>}
+                  </>
+                )}
               </span>
               <div className="board-actions">
                 <button
@@ -930,7 +1253,30 @@ export default function ChesscapeGame({
               </div>
             </div>
             <div className="board-instruction" aria-live="polite">
-              {playing ? (
+              {winMode ? (
+                winPlaying ? (
+                  computerTurn ? (
+                    <>
+                      The computer is choosing its move. Your clock is paused.
+                    </>
+                  ) : selected ? (
+                    <>Choose a highlighted square to make your move.</>
+                  ) : (
+                    <>Your clock is running. Find the fastest way to mate.</>
+                  )
+                ) : winWon ? (
+                  <>
+                    {playerMoveCount(win)} moves.{' '}
+                    <strong>{formatClock(win.elapsedMs)}</strong> on your clock.
+                  </>
+                ) : winDone ? (
+                  <>Same starting position. Your clock resets to 0:00.</>
+                ) : won ? (
+                  <>No time limit. Just a clock that remembers.</>
+                ) : (
+                  <>Win mode opens once you solve today’s escape.</>
+                )
+              ) : playing ? (
                 selected ? (
                   <>Choose a highlighted square to commit your move.</>
                 ) : (
@@ -946,7 +1292,7 @@ export default function ChesscapeGame({
                     <button
                       className="retry-link"
                       disabled={busy || !online}
-                      onClick={() => void refresh()}
+                      onClick={() => void refresh(true)}
                     >
                       {busy
                         ? 'Loading your next escape…'
@@ -964,156 +1310,289 @@ export default function ChesscapeGame({
               )}
             </div>
           </section>
-          <aside className="challenge-column">
-            <div className="challenge-heading">
-              <span className="eyebrow">YOUR DAILY CHALLENGE</span>
-              <span className="puzzle-number">
-                No. {daily ? String(daily.number).padStart(3, '0') : '—'}
-              </span>
-            </div>
-            <h2>
-              {won ? (
-                <>
-                  Now that’s
-                  <br />
-                  an escape.
-                </>
-              ) : done ? (
-                <>
-                  Every great player
-                  <br />
-                  gets cornered.
-                </>
+          {winMode ? (
+            <aside className="challenge-column">
+              <div className="challenge-heading">
+                <span className="eyebrow">WIN IT FROM HERE</span>
+                <span className="puzzle-number">
+                  No. {daily ? String(daily.number).padStart(3, '0') : '—'}
+                </span>
+              </div>
+              <h2>
+                {winWon ? (
+                  <>
+                    Checkmate.
+                    <br />
+                    That’s a win.
+                  </>
+                ) : winDone ? (
+                  <>
+                    Not this time.
+                    <br />
+                    Run it back.
+                  </>
+                ) : !won ? (
+                  <>
+                    Escape first.
+                    <br />
+                    Then win it.
+                  </>
+                ) : (
+                  <>
+                    You survived.
+                    <br />
+                    Now finish it.
+                  </>
+                )}
+              </h2>
+              <p className="challenge-description">
+                {winWon
+                  ? 'From one move from mate to delivering it. Go again to shave off time.'
+                  : winDone
+                    ? 'Every game teaches the position a little better. Same board, fresh clock.'
+                    : won
+                      ? 'Start from today’s escape position and play until checkmate. The fastest win is the best win.'
+                      : 'Win mode plays today’s position to the end. It opens once you find the escape.'}
+              </p>
+              <div className="challenge-tags">
+                <span>
+                  <Bot size={12} /> Computer · {ENGINE_DEPTH}-ply search
+                </span>
+                <span>
+                  {winMoves} {winMoves === 1 ? 'move' : 'moves'}
+                </span>
+              </div>
+              <div className={`timer-panel ${winWon ? 'timer-won' : ''}`}>
+                <div className="timer-label">
+                  <Clock3 size={15} />
+                  <span>{winDone ? 'YOUR GAME TIME' : 'YOUR CLOCK'}</span>
+                  <span className="timer-status">
+                    {winWon
+                      ? 'Checkmate'
+                      : winDone
+                        ? 'Try again'
+                        : winPlaying
+                          ? computerTurn
+                            ? 'Paused'
+                            : 'Running'
+                          : 'Starts at 0:00'}
+                  </span>
+                </div>
+                <div
+                  className="timer-digits"
+                  role="timer"
+                  aria-label={`${formatClock(winShown)} on your clock`}
+                >
+                  {winMinutes.padStart(2, '0')}
+                  <span>:</span>
+                  {winSeconds}
+                  <span className="timer-fraction">.{winFraction}</span>
+                </div>
+                <div className="timer-foot">
+                  <span>
+                    {winBest
+                      ? `Your fastest win today: ${formatClock(winBest.elapsedMs)}`
+                      : 'Only your moves count. No time limit.'}
+                  </span>
+                  <span>{winWon ? <Check size={13} /> : 'NO LIMIT'}</span>
+                </div>
+              </div>
+              {!won ? (
+                <div className="win-actions">
+                  <button
+                    className="primary-button"
+                    onClick={() => switchMode('escape')}
+                  >
+                    <ShieldCheck size={17} /> Solve today’s escape first{' '}
+                    <ArrowRight size={17} />
+                  </button>
+                  <p>Escape in one move, then play it out.</p>
+                </div>
+              ) : winPlaying ? (
+                <div className="win-actions">
+                  <button className="secondary-button wide" onClick={resignWin}>
+                    <Flag size={16} /> Resign this game
+                  </button>
+                  <p>Stuck? Resign and restart from the escape position.</p>
+                </div>
+              ) : winWon ? (
+                <div className="win-actions">
+                  <button
+                    className="primary-button"
+                    onClick={() => void openShare('win')}
+                  >
+                    <Share2 size={17} /> Share your win{' '}
+                    <ArrowUpRight size={17} />
+                  </button>
+                  <button className="secondary-button wide" onClick={startWin}>
+                    <RotateCw size={16} /> Play again for a faster win
+                  </button>
+                </div>
               ) : (
-                <>
-                  A tight spot.
-                  <br />A brilliant way out.
-                </>
+                <div className="win-actions">
+                  <button className="primary-button" onClick={startWin}>
+                    {win ? <RotateCw size={17} /> : <Swords size={17} />}{' '}
+                    {win ? 'Try again from the start' : 'Start the game'}{' '}
+                    <ArrowRight size={17} />
+                  </button>
+                  <p>Same position. Your clock starts at 0:00.</p>
+                </div>
               )}
-            </h2>
-            <p className="challenge-description">
-              {won ? (
-                'A clear head. A clever move. Your king lives to see another day.'
-              ) : done ? (
-                'One move doesn’t define your game. Take a breath. Your escape is still here.'
-              ) : (
-                <>
-                  Your king is one move from trouble.
-                  <br />
-                  Find the escape before time runs out.
-                </>
-              )}
-            </p>
-            <div className="challenge-tags">
-              <span>
-                <span className="difficulty-dots">▂▄▆</span>{' '}
-                {won ? badgeFor(attempt.elapsedMs ?? 30000) : 'Tactical escape'}
-              </span>
-              <span>
-                {daily?.escapeCount ?? '1–2'} escape{' '}
-                {daily?.escapeCount === 1 ? 'move' : 'moves'}
-              </span>
-            </div>
-            <div
-              className={`timer-panel ${playing && remaining < 10000 ? 'timer-urgent' : ''} ${won ? 'timer-won' : ''}`}
-            >
-              <div className="timer-label">
-                <Clock3 size={15} />
-                <span>{done ? 'YOUR ESCAPE TIME' : 'TIME TO ESCAPE'}</span>
-                <span className="timer-status">
+            </aside>
+          ) : (
+            <aside className="challenge-column">
+              <div className="challenge-heading">
+                <span className="eyebrow">YOUR DAILY CHALLENGE</span>
+                <span className="puzzle-number">
+                  No. {daily ? String(daily.number).padStart(3, '0') : '—'}
+                </span>
+              </div>
+              <h2>
+                {won ? (
+                  <>
+                    Now that’s
+                    <br />
+                    an escape.
+                  </>
+                ) : done ? (
+                  <>
+                    Every great player
+                    <br />
+                    gets cornered.
+                  </>
+                ) : (
+                  <>
+                    A tight spot.
+                    <br />A brilliant way out.
+                  </>
+                )}
+              </h2>
+              <p className="challenge-description">
+                {won ? (
+                  'A clear head. A clever move. Your king lives to see another day.'
+                ) : done ? (
+                  'One move doesn’t define your game. Take a breath. Your escape is still here.'
+                ) : (
+                  <>
+                    Your king is one move from trouble.
+                    <br />
+                    Find the escape before time runs out.
+                  </>
+                )}
+              </p>
+              <div className="challenge-tags">
+                <span>
+                  <span className="difficulty-dots">▂▄▆</span>{' '}
                   {won
-                    ? 'Nicely done'
-                    : done
-                      ? 'Try again'
-                      : playing
-                        ? remaining < 10000
-                          ? 'You’ve got this.'
-                          : 'Clock is ticking'
-                        : 'Ready when you are'}
+                    ? badgeFor(attempt.elapsedMs ?? 30000)
+                    : 'Tactical escape'}
+                </span>
+                <span>
+                  {daily?.escapeCount ?? '1–2'} escape{' '}
+                  {daily?.escapeCount === 1 ? 'move' : 'moves'}
                 </span>
               </div>
               <div
-                className="timer-digits"
-                role="timer"
-                aria-label={`${seconds(shownTime)} seconds ${done ? 'elapsed' : 'remaining'}`}
+                className={`timer-panel ${playing && remaining < 10000 ? 'timer-urgent' : ''} ${won ? 'timer-won' : ''}`}
               >
-                00<span>:</span>
-                {timeParts[0].padStart(2, '0')}
-                <span className="timer-fraction">.{timeParts[1]}</span>
-              </div>
-              <div className="timer-track">
-                <div
-                  style={{
-                    width: `${done ? (won ? 100 : 0) : remaining / 300}%`,
-                  }}
-                />
-              </div>
-              <div className="timer-foot">
-                <span>
-                  {won
-                    ? 'One move. A well-earned deep breath.'
-                    : playing
-                      ? 'Trust your eyes. Find your move.'
+                <div className="timer-label">
+                  <Clock3 size={15} />
+                  <span>{done ? 'YOUR ESCAPE TIME' : 'TIME TO ESCAPE'}</span>
+                  <span className="timer-status">
+                    {won
+                      ? 'Nicely done'
                       : done
-                        ? 'Take a breath. Give it another try.'
-                        : 'Take a breath. Then take your shot.'}
-                </span>
-                <span>{won ? <Check size={13} /> : '30 SEC'}</span>
-              </div>
-            </div>
-            {won ? (
-              <div className="win-actions">
-                <button
-                  className="primary-button"
-                  onClick={() => void openShare()}
+                        ? 'Try again'
+                        : playing
+                          ? remaining < 10000
+                            ? 'You’ve got this.'
+                            : 'Clock is ticking'
+                          : 'Ready when you are'}
+                  </span>
+                </div>
+                <div
+                  className="timer-digits"
+                  role="timer"
+                  aria-label={`${seconds(shownTime)} seconds ${done ? 'elapsed' : 'remaining'}`}
                 >
-                  <Share2 size={17} /> Share your escape{' '}
-                  <ArrowUpRight size={17} />
-                </button>
-                <p>Your board. Your time. Your bragging rights.</p>
-              </div>
-            ) : done ? (
-              <div className="win-actions">
-                <button className="primary-button" onClick={start}>
-                  <RotateCw size={17} /> Try this escape again{' '}
-                  <ArrowRight size={17} />
-                </button>
-                <p>Same puzzle. A fresh 30 seconds. You’ve got this.</p>
-              </div>
-            ) : (
-              <div className="rules-compact">
-                <div>
-                  <span className="rule-icon">
-                    <MoveUpRight size={19} />
-                  </span>
-                  <p>
-                    <strong>Thirty seconds per try.</strong>
-                    <span>Keep this puzzle until you find your way out.</span>
-                  </p>
+                  00<span>:</span>
+                  {timeParts[0].padStart(2, '0')}
+                  <span className="timer-fraction">.{timeParts[1]}</span>
                 </div>
-                <div>
-                  <span className="rule-icon">
-                    <Zap size={18} />
+                <div className="timer-track">
+                  <div
+                    style={{
+                      width: `${done ? (won ? 100 : 0) : remaining / 300}%`,
+                    }}
+                  />
+                </div>
+                <div className="timer-foot">
+                  <span>
+                    {won
+                      ? 'One move. A well-earned deep breath.'
+                      : playing
+                        ? 'Trust your eyes. Find your move.'
+                        : done
+                          ? 'Take a breath. Give it another try.'
+                          : 'Take a breath. Then take your shot.'}
                   </span>
-                  <p>
-                    <strong>
-                      Quick thinking. Well-earned bragging rights.
-                    </strong>
-                    <span>Solve it. Get your time. Share your escape.</span>
-                  </p>
+                  <span>{won ? <Check size={13} /> : '30 SEC'}</span>
                 </div>
               </div>
-            )}
-            <div className="daily-note">
-              <span className="note-star">✳</span>
-              <p>
-                A little chess. A little adrenaline.
-                <br />
-                <strong>A fresh escape, every day.</strong>
-              </p>
-              <ArrowUpRight size={20} />
-            </div>
-          </aside>
+              {won ? (
+                <div className="win-actions">
+                  <button
+                    className="primary-button"
+                    onClick={() => void openShare('escape')}
+                  >
+                    <Share2 size={17} /> Share your escape{' '}
+                    <ArrowUpRight size={17} />
+                  </button>
+                  <p>Your board. Your time. Your bragging rights.</p>
+                </div>
+              ) : done ? (
+                <div className="win-actions">
+                  <button className="primary-button" onClick={start}>
+                    <RotateCw size={17} /> Try this escape again{' '}
+                    <ArrowRight size={17} />
+                  </button>
+                  <p>Same puzzle. A fresh 30 seconds. You’ve got this.</p>
+                </div>
+              ) : (
+                <div className="rules-compact">
+                  <div>
+                    <span className="rule-icon">
+                      <MoveUpRight size={19} />
+                    </span>
+                    <p>
+                      <strong>Thirty seconds per try.</strong>
+                      <span>Keep this puzzle until you find your way out.</span>
+                    </p>
+                  </div>
+                  <div>
+                    <span className="rule-icon">
+                      <Zap size={18} />
+                    </span>
+                    <p>
+                      <strong>
+                        Quick thinking. Well-earned bragging rights.
+                      </strong>
+                      <span>Solve it. Get your time. Share your escape.</span>
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="daily-note">
+                <span className="note-star">✳</span>
+                <p>
+                  A little chess. A little adrenaline.
+                  <br />
+                  <strong>A fresh escape, every day.</strong>
+                </p>
+                <ArrowUpRight size={20} />
+              </div>
+            </aside>
+          )}
         </div>
         <div className="under-game">
           <span>
@@ -1189,7 +1668,9 @@ export default function ChesscapeGame({
                 ? 'A little better, every day.'
                 : modal === 'install'
                   ? 'A home for your daily escape.'
-                  : 'Some escapes are worth sharing.'}
+                  : shareKind === 'win'
+                    ? 'Some wins are worth sharing.'
+                    : 'Some escapes are worth sharing.'}
           </DialogTitle>
           <DialogDescription>
             {modal === 'how'
@@ -1198,7 +1679,9 @@ export default function ChesscapeGame({
                 ? 'Your Chesscape history on this browser.'
                 : modal === 'install'
                   ? 'Add Chesscape to your home screen for a little chess, every day.'
-                  : 'You earned this one. Take your board and your time with you.'}
+                  : shareKind === 'win'
+                    ? 'Checkmate delivered. Take your final board and your time with you.'
+                    : 'You earned this one. Take your board and your time with you.'}
           </DialogDescription>
           {modal === 'how' && (
             <div className="how-content">
@@ -1233,6 +1716,19 @@ export default function ChesscapeGame({
                       a share card. A wrong move or the clock reaching zero ends
                       this try. Start again with the same position and a fresh
                       timer.
+                    </p>
+                  </div>
+                </li>
+                <li>
+                  <span>04</span>
+                  <div>
+                    <strong>Then, win it.</strong>
+                    <p>
+                      Once you escape, switch to Win it and play the same
+                      position to the end against the computer. Your clock
+                      starts at 0:00, runs only on your move and has no limit.
+                      Checkmate wins; a loss, draw or resignation lets you
+                      restart. Your fastest win is kept.
                     </p>
                   </div>
                 </li>
@@ -1283,6 +1779,22 @@ export default function ChesscapeGame({
                     {daily?.stats.bestMs != null
                       ? `${seconds(daily.stats.bestMs)} seconds`
                       : 'Your first escape awaits.'}
+                  </strong>
+                </div>
+              </div>
+              <div className="personal-best">
+                <Swords size={24} />
+                <div>
+                  <span>
+                    YOUR QUICKEST WIN
+                    {winProgress.wins.length
+                      ? ` · ${winProgress.wins.length} ${winProgress.wins.length === 1 ? 'PUZZLE' : 'PUZZLES'} WON`
+                      : ''}
+                  </span>
+                  <strong>
+                    {winBestEver
+                      ? `${formatClock(winBestEver.elapsedMs)} in ${winBestEver.moves} moves`
+                      : 'Escape, then beat the computer.'}
                   </strong>
                 </div>
               </div>
@@ -1355,7 +1867,11 @@ export default function ChesscapeGame({
                 <img
                   className="share-image"
                   src={shareUrl}
-                  alt={`Chesscape escape in ${seconds(attempt?.elapsedMs ?? 0)} seconds with the resulting chessboard`}
+                  alt={
+                    shareKind === 'win'
+                      ? `Chesscape win in ${formatClock(win?.elapsedMs ?? 0)} with the final chessboard`
+                      : `Chesscape escape in ${seconds(attempt?.elapsedMs ?? 0)} seconds with the resulting chessboard`
+                  }
                 />
               ) : (
                 <p>
@@ -1375,8 +1891,7 @@ export default function ChesscapeGame({
                   className="secondary-button"
                   disabled={!shareBlob || shareBusy}
                   onClick={() => {
-                    if (shareBlob)
-                      downloadBlob(shareBlob, `chesscape-${attempt?.day}.png`);
+                    if (shareBlob) downloadBlob(shareBlob, shareFileName);
                   }}
                 >
                   <Download size={16} /> Save image
@@ -1398,7 +1913,9 @@ export default function ChesscapeGame({
         <DialogContent className="chesscape-modal">
           <DialogTitle>Choose your promotion.</DialogTitle>
           <DialogDescription>
-            Your timer is still running. This piece becomes your final move.
+            {winMode
+              ? 'Your clock is still running. Pick the piece your pawn becomes.'
+              : 'Your timer is still running. This piece becomes your final move.'}
           </DialogDescription>
           <div className="promotion-options">
             {['q', 'r', 'b', 'n'].map((p) => (
@@ -1406,7 +1923,9 @@ export default function ChesscapeGame({
                 key={p}
                 aria-label={`Promote to ${names[p]}`}
                 onClick={() => {
-                  if (promotion) commit(promotion.from, promotion.to, p);
+                  if (!promotion) return;
+                  if (winMode) commitWin(promotion.from, promotion.to, p);
+                  else commit(promotion.from, promotion.to, p);
                 }}
               >
                 <img

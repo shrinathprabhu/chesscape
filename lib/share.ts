@@ -1,12 +1,45 @@
 import { Chess } from 'chess.js';
 import type { Attempt } from './contracts';
 import { CANONICAL_URL } from './site';
+import { formatClock, playerMoveCount, type WinGame } from './win-game';
 export const shareText = (attempt: Attempt, number: number) =>
   `Solved ${attempt.day === new Date(attempt.updatedAt).toISOString().slice(0, 10) ? "today's" : 'my'} Chesscape within ${((attempt.elapsedMs ?? 0) / 1000).toFixed(2)} seconds. ♟\nChesscape No. ${String(number).padStart(3, '0')} · ${attempt.day}\nFind your escape → ${CANONICAL_URL}`;
 export async function createShareImage(
   attempt: Attempt,
   number: number,
 ): Promise<Blob> {
+  return drawCard({
+    eyebrow: 'CHESSCAPE  /  THE DAILY ESCAPE',
+    headline: 'Found my way out.',
+    figure: ((attempt.elapsedMs ?? 0) / 1000).toFixed(2) + 's',
+    detail: `No. ${String(number).padStart(3, '0')}  ·  ${attempt.day}  ·  KING SAFE`,
+    fen: attempt.fen,
+    tagline: 'One position. Thirty seconds. Your move.',
+  });
+}
+export const winShareText = (game: WinGame, number: number) =>
+  `Beat the computer from Chesscape No. ${String(number).padStart(3, '0')} in ${formatClock(game.elapsedMs)} (${playerMoveCount(game)} moves). ♟\nWin it from the escape → ${CANONICAL_URL}`;
+export async function createWinShareImage(
+  game: WinGame,
+  number: number,
+): Promise<Blob> {
+  return drawCard({
+    eyebrow: 'CHESSCAPE  /  WIN IT',
+    headline: 'Beat the computer.',
+    figure: formatClock(game.elapsedMs),
+    detail: `No. ${String(number).padStart(3, '0')}  ·  ${game.day}  ·  ${playerMoveCount(game)} MOVES  ·  CHECKMATE`,
+    fen: game.fen,
+    tagline: 'Same position. Play it out. Fastest checkmate wins.',
+  });
+}
+async function drawCard(card: {
+  eyebrow: string;
+  headline: string;
+  figure: string;
+  detail: string;
+  fen: string;
+  tagline: string;
+}): Promise<Blob> {
   // Wait for the page's self-hosted font before baking text into the PNG.
   await document.fonts.ready;
   const canvas = document.createElement('canvas');
@@ -19,21 +52,17 @@ export async function createShareImage(
   ctx.textAlign = 'center';
   ctx.fillStyle = '#41643c';
   ctx.font = '22px "Play", Arial, sans-serif';
-  ctx.fillText('CHESSCAPE  /  THE DAILY ESCAPE', 500, 75);
+  ctx.fillText(card.eyebrow, 500, 75);
   ctx.fillStyle = '#273b2b';
   ctx.font = '64px "Play", Arial, sans-serif';
-  ctx.fillText('Found my way out.', 500, 160);
+  ctx.fillText(card.headline, 500, 160);
   ctx.font = '112px "Play", Arial, sans-serif';
-  ctx.fillText(((attempt.elapsedMs ?? 0) / 1000).toFixed(2) + 's', 500, 290);
+  ctx.fillText(card.figure, 500, 290);
   ctx.font = '21px "Play", Arial, sans-serif';
   ctx.fillStyle = '#728168';
-  ctx.fillText(
-    `No. ${String(number).padStart(3, '0')}  ·  ${attempt.day}  ·  KING SAFE`,
-    500,
-    340,
-  );
-  const board = new Chess(attempt.fen).board().flat();
-  const flipped = new Chess(attempt.fen).turn() === 'w';
+  ctx.fillText(card.detail, 500, 340);
+  const board = new Chess(card.fen).board().flat();
+  const flipped = new Chess(card.fen).turn() === 'w';
   const squares = flipped ? [...board].reverse() : board;
   const images = new Map<string, HTMLImageElement>();
   await Promise.all(
@@ -71,7 +100,7 @@ export async function createShareImage(
   });
   ctx.fillStyle = '#56734a';
   ctx.font = '24px "Play", Arial, sans-serif';
-  ctx.fillText('One position. Thirty seconds. Your move.', 500, 1192);
+  ctx.fillText(card.tagline, 500, 1192);
   ctx.fillStyle = '#849078';
   ctx.font = '18px "Play", Arial, sans-serif';
   ctx.fillText('chesscape.lowkey.tools', 500, 1230);

@@ -1785,3 +1785,96 @@ summary {
     margin-top: 0;
   }
 }
+/* Game modes: the one-move escape and playing it out against the computer. */
+.mode-switch {
+  min-width: 0;
+  max-width: 1054px;
+  margin: 0 auto 22px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid #dde1d6;
+  border-radius: 9px;
+  background: #eef1e8;
+}
+.mode-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: #6c7666;
+  text-align: left;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.mode-tab span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.mode-tab strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+.mode-tab small {
+  font-size: 11px;
+  color: #8a9383;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mode-tab:hover:not(:disabled) {
+  background: #e4e9dc;
+}
+.mode-tab.mode-active {
+  background: #fffffb;
+  color: #2f573a;
+  box-shadow: 0 1px 4px #27362614;
+}
+.mode-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.last-move-square {
+  box-shadow: inset 0 0 0 100px #e6dc6a55;
+}
+.thinking-tag {
+  color: #7b6a45;
+  border-color: #e6dcc3;
+  background: #f5efe0;
+}
+.secondary-button.wide {
+  width: 100%;
+  margin-top: 9px;
+}
+.win-actions > .secondary-button.wide:first-child {
+  margin-top: 0;
+}
+.personal-best + .personal-best {
+  margin-top: 10px;
+}
+@media (max-width: 760px) {
+  .mode-switch {
+    margin-bottom: 16px;
+  }
+  .mode-tab {
+    gap: 8px;
+    padding: 9px 8px;
+  }
+  .mode-tab strong {
+    font-size: 13px;
+  }
+  .mode-tab small {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mode-tab {
+    transition: none;
+  }
+}
