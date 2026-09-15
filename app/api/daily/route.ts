@@ -1,15 +1,6 @@
-import { database } from '@/server/database';
-import {
-  getDaily,
-  publicPuzzle,
-  utcDay,
-  type DailyRow,
-} from '@/server/service';
-import type { PuzzlePayload } from '@/lib/contracts';
+import { getDaily, utcDay, FIRST_DAY } from '@/server/service';
 import { noStore, puzzleCacheHeaders } from '@/lib/http-cache';
 
-// Puzzle responses contain no player data and can be shared across visitors.
-const cached = new Map<string, Promise<PuzzlePayload>>();
 export async function GET(request: Request) {
   const today = utcDay();
   const params = new URL(request.url).searchParams;
@@ -28,24 +19,8 @@ export async function GET(request: Request) {
       { status: 400, headers: noStore },
     );
   try {
-    let loading = cached.get(day);
-    if (!loading) {
-      loading = (async () => {
-        const db = database();
-        const row =
-          day === today
-            ? await getDaily(db, day)
-            : await db
-                .prepare('SELECT * FROM daily WHERE day=?')
-                .bind(day)
-                .first<DailyRow>();
-        if (!row) throw new Error('PUZZLE_NOT_FOUND');
-        return publicPuzzle(row);
-      })();
-      cached.set(day, loading);
-      if (cached.size > 32) cached.delete(cached.keys().next().value!);
-    }
-    const puzzle = await loading;
+    if (day < FIRST_DAY) throw new Error('PUZZLE_NOT_FOUND');
+    const puzzle = getDaily(day);
     // Browser state is local; only this shared puzzle crosses the network once.
     return Response.json(puzzle, {
       headers: {
@@ -56,7 +31,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    cached.delete(day);
     const missing =
       error instanceof Error && error.message === 'PUZZLE_NOT_FOUND';
     if (!missing)

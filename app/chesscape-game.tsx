@@ -1247,11 +1247,9 @@ export default function ChesscapeGame({
                 </p>
               </div>
               <p className="source-note">
-                {daily?.source === 'Lichess'
-                  ? 'Today’s position comes from the public-domain Lichess puzzle database.'
-                  : 'Today’s puzzle is a verified Chesscape original. When the Lichess daily puzzle fits the escape format, we use it.'}{' '}
-                Once loaded, your puzzle works offline in this tab. Reconnect
-                when reopening the app or loading your next escape.
+                Today’s puzzle is a verified Chesscape original from a rotating
+                collection. Once loaded, your puzzle works offline in this tab.
+                Reconnect when reopening the app or loading your next escape.
               </p>
               <button className="primary-button" onClick={() => setModal(null)}>
                 Got it. Keep my king safe. <ArrowRight size={16} />

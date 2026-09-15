@@ -29,7 +29,7 @@ export const faqs = [
     id: 'puzzle-source',
     question: 'Where do Chesscape puzzles come from?',
     answer:
-      'Chesscape checks the Lichess daily puzzle and uses it only when it fits the defensive escape format. Otherwise, it uses a verified Chesscape original. Each position has one or two moves that avoid immediate checkmate; this does not guarantee a winning position or rule out a longer forced mate. The source is shown below the game.',
+      'Chesscape selects a verified original puzzle from a bundled collection using the UTC date. The current 16-position rotation repeats every 16 days. Each position has one or two moves that avoid immediate checkmate; this does not guarantee a winning position or rule out a longer forced mate. The source is shown below the game.',
   },
   {
     id: 'mobile-offline',

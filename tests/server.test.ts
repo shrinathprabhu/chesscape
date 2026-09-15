@@ -1,50 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
 import { Chess } from 'chess.js';
-import { originalPuzzle, escapeMoves, lichessCandidate } from '../server/chess';
-import { getDaily, publicPuzzle, utcDay } from '../server/service';
-function makeDb() {
-  const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(readFileSync('drizzle/0000_spotty_junta.sql', 'utf8'));
-  const db = {
-    prepare(sql: string) {
-      let args: unknown[] = [];
-      return {
-        bind(...values: unknown[]) {
-          args = values;
-          return this;
-        },
-        async first() {
-          return sqlite.prepare(sql).get(...(args as never[])) ?? null;
-        },
-        async run() {
-          return {
-            meta: {
-              changes: Number(
-                sqlite.prepare(sql).run(...(args as never[])).changes,
-              ),
-            },
-          };
-        },
-      };
-    },
-  } as unknown as D1Database;
-  return { db, sqlite };
-}
+import { originalPuzzle, escapeMoves } from '../server/chess';
+import { getDaily, utcDay } from '../server/service';
 void test('all 16 daily transforms ship 1–2 escapes and an immediate mating reply for every other legal move', () => {
   for (let i = 0; i < 16; i++) {
     const day = utcDay(Date.parse('2026-09-01') + i * 86400000);
     const p = originalPuzzle(day);
-    const payload = publicPuzzle({
-      day,
-      fen: p.fen,
-      answers: JSON.stringify(p.answers),
-      source: p.source,
-      source_id: null,
-      escape_count: p.escapeCount,
-    });
+    const payload = getDaily(day);
+    assert.equal(payload.fen, p.fen);
     assert.ok(payload.solutions.length >= 1 && payload.solutions.length <= 2);
     assert.deepEqual(payload.solutions, escapeMoves(payload.fen));
     const game = new Chess(payload.fen);
@@ -78,60 +42,57 @@ void test('all 16 daily transforms ship 1–2 escapes and an immediate mating re
     );
   }
 });
-void test('daily cache requests Lichess once, including upstream failure, and does not write player attempts', async (t) => {
-  const { db, sqlite } = makeDb();
-  const fetch = t.mock.method(globalThis, 'fetch', async () => {
-    throw new Error('offline');
+void test('selection is repeatable without network access and saved dates survive midnight', (t) => {
+  const network = t.mock.method(globalThis, 'fetch', () => {
+    throw new Error('No upstream allowed');
   });
-  const a = await getDaily(db, '2026-09-07');
-  const b = await getDaily(db, '2026-09-07');
-  assert.deepEqual(a, b);
-  assert.equal(fetch.mock.callCount(), 1);
-  assert.equal(a.source, 'Chesscape original');
-  assert.equal(
-    sqlite.prepare('SELECT COUNT(*) AS count FROM attempts').get()!.count,
-    0,
-  );
-  sqlite.close();
+  const a = getDaily('2026-09-07');
+  getDaily('2026-09-08');
+  assert.deepEqual(getDaily('2026-09-07'), a);
+  assert.equal(a.resetsAt, Date.parse('2026-09-08T00:00:00Z'));
+  a.solutions.length = 0;
+  assert.ok(getDaily('2026-09-07').solutions.length > 0);
+  assert.equal(network.mock.callCount(), 0);
+  for (const day of ['2026-02-30', 'invalid', '2026-08-31'])
+    assert.throws(() => getDaily(day));
 });
-void test('concurrent first visitors always receive the same immutable position', async (t) => {
-  const { db, sqlite } = makeDb();
-  let release!: () => void;
-  let entered!: () => void;
-  const upstreamStarted = new Promise<void>((resolve) => {
-    entered = resolve;
+
+void test('daily API serves current and historical puzzles without external services', async (t) => {
+  const { GET } = await import('../app/api/daily/route');
+  const network = t.mock.method(globalThis, 'fetch', () => {
+    throw new Error('No upstream allowed');
   });
-  const upstream = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const fetch = t.mock.method(globalThis, 'fetch', async () => {
-    entered();
-    await upstream;
-    return Response.json({
-      game: { pgn: 'e4' },
-      puzzle: { themes: ['mateIn1'], solution: ['e7e5'], initialPly: 0 },
-    });
-  });
-  const first = getDaily(db, '2026-09-08');
-  await upstreamStarted;
-  const second = await getDaily(db, '2026-09-08');
-  release();
-  assert.deepEqual(await first, second);
-  assert.deepEqual(await getDaily(db, '2026-09-08'), second);
-  assert.equal(fetch.mock.callCount(), 1);
-  assert.equal(
-    sqlite.prepare('SELECT COUNT(*) AS count FROM daily').get()!.count,
-    1,
+  const today = utcDay();
+  const current = await GET(
+    new Request('https://chesscape.lowkey.tools/api/daily'),
   );
-  sqlite.close();
-});
-void test('Lichess rejects unrelated or malformed puzzle data', () => {
-  assert.equal(lichessCandidate({}), null);
-  assert.equal(
-    lichessCandidate({
-      game: { pgn: 'e4' },
-      puzzle: { initialPly: 0, themes: ['mateIn1'], solution: ['e7e5'] },
-    }),
-    null,
+  assert.equal(current.status, 200);
+  assert.deepEqual(await current.json(), getDaily(today));
+  const saved = await GET(
+    new Request('https://chesscape.lowkey.tools/api/daily?day=2026-09-07'),
   );
+  assert.equal(saved.status, 200);
+  assert.deepEqual(await saved.json(), getDaily('2026-09-07'));
+  for (const query of [
+    'day=invalid',
+    'day=2026-02-30',
+    'day=9999-12-31',
+    'day=2026-09-07&day=2026-09-08',
+    'other=1',
+  ]) {
+    const response = await GET(
+      new Request('https://chesscape.lowkey.tools/api/daily?' + query),
+    );
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+  assert.equal(
+    (
+      await GET(
+        new Request('https://chesscape.lowkey.tools/api/daily?day=2026-08-31'),
+      )
+    ).status,
+    404,
+  );
+  assert.equal(network.mock.callCount(), 0);
 });

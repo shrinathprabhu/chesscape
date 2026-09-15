@@ -1,12 +1,11 @@
 # Chesscape
 
-A daily escape-the-mate PWA with instant, local play. Find one of the one or two safe moves within 30 seconds, retry the same position until solved, and share a board-and-time card. React 19, TypeScript, chess.js, and the existing Vinext/Vite Sites scaffold power the frontend. A small Worker and SQLite/D1 database publish the shared daily puzzle.
+A daily escape-the-mate PWA with instant, local play. Find one of the one or two safe moves within 30 seconds, retry the same position until solved, and share a board-and-time card. React 19, TypeScript, chess.js, and the existing Vinext/Vite Sites scaffold power the frontend. A stateless Cloudflare Worker serves the shared daily puzzle from a bundled collection. No database or upstream puzzle API is required.
 
 ## Run locally
 
 ```sh
 npm install
-npx wrangler d1 execute DB --local --config wrangler.local.json --file drizzle/0000_spotty_junta.sql
 npm run dev
 ```
 
@@ -28,25 +27,19 @@ Once loaded, starting, moving, timing out, and retrying perform no network reque
 
 Progress and personal history are saved under `chesscape-progress-v2` in this browser's localStorage. An unfinished puzzle stays pinned across visits, even across midnight. Reloading fetches `GET /api/daily?day=YYYY-MM-DD` for that saved puzzle and restores the active deadline or result. After a solve, the next puzzle unlocks at the following midnight UTC, based on the completion date. Reloading or reopening the page does not reset that cooldown. Clearing site data or switching browsers starts fresh.
 
-Solutions and reply maps remain in the active page's memory and are excluded from saved progress, browser HTTP caching (`Cache-Control: no-store`), and service-worker caches. The public daily response advertises a separate CDN TTL ending at midnight, and each Worker instance retains a bounded in-memory puzzle cache. A loaded puzzle works offline in the same tab. Reopening the app or loading another puzzle requires a connection. The share card uses the local elapsed time.
-
-The former start and submit endpoints have been removed. Existing database migrations and historical `attempts` records are retained for compatibility; the app no longer reads or writes player attempts or cookies. Local history begins with this release. The old `rate_limits` table now provides only a unique, expiring daily upstream-fetch lock.
+Solutions and reply maps remain in the active page's memory and are excluded from saved progress, browser HTTP caching (`Cache-Control: no-store`), and service-worker caches. The public daily response advertises a separate CDN TTL ending at midnight, while the Worker reads its bundled puzzle collection. A loaded puzzle works offline in the same tab. Reopening the app or loading another puzzle requires a connection. The share card uses the local elapsed time.
 
 ## Daily puzzle selection
 
-The server publishes one immutable puzzle under a unique UTC date. A database lock limits the Lichess daily check to once per date, with a 2.5-second timeout. A suitable Lichess puzzle is used when available; otherwise a verified original is published. Concurrent cold requests may publish the original while the upstream check is pending; all visitors then receive that same original. An already-published position is never replaced. Existing historical puzzle requests only read saved rows, so arbitrary date requests do not trigger upstream work.
+The UTC day number selects one of 16 precomputed original positions from `server/puzzles-v1.json`. Each has one or two safe moves and an immediate mating reply for every other legal move. Selection does not access a database, fetch Lichess, or run chess search. Everyone on the same date receives the same position across requests, Worker instances, and deployments.
 
-A Lichess daily puzzle must have the `defensiveMove` theme, at least five legal moves, exactly one or two moves that avoid immediate checkmate, and its first solution move among those escapes. The PGN is replayed through `initialPly + 1` to include the opponent's setup move. Every rejected legal move permits an immediate mating reply. This verifies escape from mate on the next move, rather than a guarantee against a longer forced mate.
+The rotation repeats every 16 days. Keep v1's contents, order and length fixed; introduce future collections with an explicit date-based cutover to preserve historical mappings. Dates from September 1, 2026 through today can be retrieved, so an unfinished puzzle stays available after midnight. Existing browser progress is retained. Previously database-selected Lichess puzzles cannot be reconstructed from the date alone; the bundled mapping preserves the original fallback rotation.
 
-The launch fallback pack contains original compositions with file/color transforms and repeats after 16 days. It is attributed as “Chesscape original.” A larger collection can later be imported from the CC0 Lichess puzzle database and verified offline. Full puzzle-generation and search code stays out of the browser bundle; only the selected puzzle and its answers are sent.
-
-## Hosting
-
-The working Sites deployment uses a Cloudflare Worker with D1 (`DB`). Source migrations live in `drizzle/`; the Sites packager copies them to `dist/.openai/drizzle/`. `npm run verify:archive -- /path/to/release.tar.gz` checks that every migration and metadata file is included unchanged before publishing.
+`server/chess.ts` provides the independent chess checks used by tests, not request handling. Tests verify every bundled position, all accepted escapes, and every wrong move's mating reply. Only the selected position and its answers are sent to the browser.
 
 ## Cloudflare Workers
 
-Deploy the server-rendered app, daily API and static assets together on Cloudflare Workers. The root `wrangler.jsonc` configures D1, Node compatibility and the custom domain. The [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/reference/static-assets/) generates `dist/server/wrangler.json` with the compiled entry point and `dist/client` asset directory. Deploy that generated configuration, not the source entry point or client files alone.
+Deploy the server-rendered app, daily API and static assets together on Cloudflare Workers. The root `wrangler.jsonc` configures Node compatibility, static assets and the custom domain. The [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/reference/static-assets/) generates `dist/server/wrangler.json` with the compiled entry point and `dist/client` asset directory. Deploy that generated configuration, not the source entry point or client files alone.
 
 Use these Workers Builds settings:
 
@@ -62,30 +55,15 @@ Use these Workers Builds settings:
 
 Workers uses the generated asset directory; there is no Pages output-directory setting. The custom-domain route is in the production config and is applied when you deploy. No base path or proxy rewrite is needed.
 
-Before the first deployment, create your production and preview databases:
+No database creation, bindings, IDs, migrations, or puzzle API keys are needed. Run `npm run deploy:workers` from an authenticated terminal, or use the Workers Builds settings above.
 
-```sh
-npx wrangler d1 create chesscape
-npx wrangler d1 create chesscape-preview
-```
-
-Replace the two placeholder `database_id` values in `wrangler.jsonc` with the returned IDs. These IDs are non-secret. Initialize each database before serving traffic:
-
-```sh
-npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
-npx wrangler d1 migrations apply DB --remote --env preview --config wrangler.jsonc
-```
-
-The `DB` binding and migration are required for daily puzzles. Build commands do not create databases or run remote migrations. To build and deploy from an authenticated terminal, run `npm run deploy:workers`.
-
-For an isolated preview Worker, run `npm run deploy:workers:preview`. It selects `CLOUDFLARE_ENV=preview` at build time, deploys `chesscape-preview` with its own database, and does not attach the production domain. Configure a separate preview build with `npm run build:workers:preview` if using CI. Do not use a production-config version upload as an isolated database preview: it retains production bindings.
+For a separate preview Worker, run `npm run deploy:workers:preview`. It selects `CLOUDFLARE_ENV=preview` at build time and deploys `chesscape-preview` without the production custom domain. Use `npm run build:workers:preview` for a preview CI build.
 
 For a local Workers runtime check:
 
 ```sh
 npm run build:workers
-npx wrangler d1 migrations apply DB --local --config wrangler.jsonc --persist-to .wrangler/workers-state
-npm run preview:workers -- --port 3001 --persist-to .wrangler/workers-state
+npm run preview:workers -- --port 3001
 # In another terminal:
 npm run check:http
 node scripts/check-discovery.mjs
@@ -110,7 +88,7 @@ The production CSP limits resource and API origins to this site, permits local b
 | Successful daily puzzle | Browser no-store; CDN-only TTL capped at next UTC midnight (one day for saved historical dates) |
 | Invalid, missing or failed API responses | No storage in browser or CDN |
 
-The daily response uses `CDN-Cache-Control` separately from browser `Cache-Control`. No stale-while-revalidate window is added to the daily puzzle. CDN providers must support the targeted headers to use that edge cache; the bounded Worker cache and durable daily publication remain the fallback. Duplicate/unknown query parameters and invalid or future dates fail before database access. The service worker ignores APIs, checks mutable assets against the network with an offline fallback, and uses cache-first only for hashed assets. Cache cleanup is restricted to Chesscape’s root cache.
+The daily response uses `CDN-Cache-Control` separately from browser `Cache-Control`. No stale-while-revalidate window is added to the daily puzzle. CDN providers must support the targeted headers to use that edge cache; the deterministic bundled selection remains available without edge caching. Duplicate/unknown query parameters and invalid or future dates fail before puzzle selection. The service worker ignores APIs, checks mutable assets against the network with an offline fallback, and uses cache-first only for hashed assets. Cache cleanup is restricted to Chesscape’s root cache.
 
 
 The former private Sites preview was observed to ignore static `_headers` and force asset revalidation. Keep `npm run check:http` strict when checking the eventual public host; it verifies the actual served policy rather than only configuration files.
@@ -149,4 +127,4 @@ npm run check:http
 node scripts/check-discovery.mjs
 ```
 
-Tests cover chess correctness, local retries and deadlines, saved progress, daily publication, FAQ/schema consistency, canonical URLs, crawler rules, manifest scope and declared icon dimensions. The HTTP smoke check verifies server-rendered metadata and JSON-LD, native FAQ markup, creator links, discovery response types, root-relative assets, and API index exclusion. Browser-driven visual, assistive-technology, install-prompt, and field-performance checks still require device testing.
+Tests cover chess correctness, local retries and deadlines, saved progress, deterministic daily selection, FAQ/schema consistency, canonical URLs, crawler rules, manifest scope and declared icon dimensions. The HTTP smoke check verifies server-rendered metadata and JSON-LD, native FAQ markup, creator links, discovery response types, root-relative assets, and API index exclusion. Browser-driven visual, assistive-technology, install-prompt, and field-performance checks still require device testing.

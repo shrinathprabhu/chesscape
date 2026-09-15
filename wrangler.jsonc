@@ -9,29 +9,11 @@
   "routes": [{ "pattern": "chesscape.lowkey.tools", "custom_domain": true }],
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "chesscape",
-      // Replace with the ID returned by `npx wrangler d1 create chesscape`.
-      "database_id": "00000000-0000-4000-8000-000000000000",
-      "migrations_dir": "drizzle",
-    },
-  ],
   "env": {
     "preview": {
       "name": "chesscape-preview",
       "routes": [],
       "workers_dev": true,
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "chesscape-preview",
-          // Use a separate database so previews cannot publish production puzzles.
-          "database_id": "00000000-0000-4000-8000-000000000000",
-          "migrations_dir": "drizzle",
-        },
-      ],
     },
   },
 }

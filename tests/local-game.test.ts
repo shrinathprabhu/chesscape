@@ -1,8 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Chess } from 'chess.js';
-import { originalPuzzle } from '../server/chess';
-import { publicPuzzle } from '../server/service';
+import { getDaily } from '../server/service';
 import {
   createAttempt,
   commitMove,
@@ -17,15 +16,7 @@ import {
 } from '../lib/local-game';
 import type { LocalProgress } from '../lib/contracts';
 const day = '2026-09-07';
-const p = originalPuzzle(day);
-const puzzle = publicPuzzle({
-  day,
-  fen: p.fen,
-  answers: JSON.stringify(p.answers),
-  source: p.source,
-  source_id: null,
-  escape_count: p.escapeCount,
-});
+const puzzle = getDaily(day);
 const now = Date.parse(day + 'T12:00:00Z');
 const move = (uci: string) => ({
   from: uci.slice(0, 2),
