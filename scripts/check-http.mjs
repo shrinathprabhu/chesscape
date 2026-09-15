@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 const origin = process.env.CHESSCAPE_CHECK_ORIGIN ?? 'http://localhost:3001';
-const mount = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const auth = process.env.CC_SITES_INSPECTION_TOKEN;
 const headers = auth ? { 'OAI-Sites-Authorization': `Bearer ${auth}` } : {};
 async function get(path, status = 200) {
-  const response = await fetch(origin + mount + path, {
+  const response = await fetch(origin + path, {
     headers,
     signal: AbortSignal.timeout(30000),
   });
@@ -44,8 +43,8 @@ if (origin.startsWith('https://'))
 const html = await page.text();
 const css = html.match(/href="([^"]+\.css)"/)?.[1];
 assert.ok(css, 'HTML must reference a stylesheet');
-assert.ok(css.startsWith(mount + '/_next/static/'));
-const bundle = await get(css.slice(mount.length));
+assert.ok(css.startsWith('/_next/static/'));
+const bundle = await get(css);
 assert.match(
   bundle.headers.get('cache-control') ?? '',
   /max-age=31536000.*immutable/,
@@ -87,12 +86,12 @@ for (const query of [
 ]) {
   const response = await get('/api/daily?' + query, 400);
   assert.match(response.headers.get('cache-control') ?? '', /no-store/);
-  for (const name of ['cdn-cache-control', 'vercel-cdn-cache-control']) {
+  for (const name of ['cdn-cache-control']) {
     const value = response.headers.get(name);
     if (value)
       assert.equal(value, 'no-store', `Errors must not be cached by ${name}`);
   }
 }
 console.log(
-  `HTTP checks passed for ${origin}${mount}: security headers, asset caching, PWA updates, daily expiry and uncacheable errors.`,
+  `HTTP checks passed for ${origin}: security headers, asset caching, PWA updates, daily expiry and uncacheable errors.`,
 );

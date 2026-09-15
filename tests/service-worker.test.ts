@@ -6,7 +6,7 @@ const source = readFileSync(
   new URL('../public/sw.js', import.meta.url),
   'utf8',
 );
-function worker(mount = '') {
+function worker() {
   const listeners: Record<string, (event: Record<string, unknown>) => void> =
     {};
   const removed: string[] = [];
@@ -17,7 +17,7 @@ function worker(mount = '') {
     Response,
     self: {
       location: { origin: 'https://example.com' },
-      registration: { scope: `https://example.com${mount}/` },
+      registration: { scope: 'https://example.com/' },
       clients: { claim: async () => {} },
       addEventListener: (
         name: string,
@@ -32,8 +32,8 @@ function worker(mount = '') {
       keys: async () => [
         'another-app',
         'chesscape-shell-v3-root',
-        'chesscape-shell-v3-/chesscape',
-        'chesscape-shell-v4-root',
+        'chesscape-shell-v3-/other-game',
+        'chesscape-shell-v5-root',
       ],
       delete: async (key: string) => {
         removed.push(key);
@@ -61,7 +61,7 @@ function worker(mount = '') {
         request: {
           method: 'GET',
           mode: 'cors',
-          url: `https://example.com${path}`,
+          url: new URL(path, 'https://example.com').href,
         },
         respondWith: (response: Promise<Response>) => {
           result = response;
@@ -76,33 +76,27 @@ function worker(mount = '') {
 }
 
 void test('service worker bypasses puzzles and keeps mutable assets fresh with offline fallback', async () => {
-  const sw = worker('/chesscape');
+  const sw = worker();
   for (const path of [
-    '/chesscape/api/daily',
-    '/chesscape/api/daily?day=2026-09-01',
-    '/chesscape/sw.js',
-    '/other/icon.png',
+    '/api/daily',
+    '/api/daily?day=2026-09-01',
+    '/sw.js',
+    'https://other.example/icon.png',
   ])
     assert.equal(await sw.request(path), undefined);
   assert.equal(sw.requests(), 0);
   assert.equal(
-    await (await sw.request('/chesscape/_next/static/font-abc.woff2'))?.text(),
+    await (await sw.request('/_next/static/font-abc.woff2'))?.text(),
     'cached',
   );
   assert.equal(sw.requests(), 0);
+  assert.equal(await (await sw.request('/icon-192.png'))?.text(), 'fresh');
   assert.equal(
-    await (await sw.request('/chesscape/icon-192.png'))?.text(),
-    'fresh',
-  );
-  assert.equal(
-    await (await sw.request('/chesscape/manifest.webmanifest'))?.text(),
+    await (await sw.request('/manifest.webmanifest'))?.text(),
     'fresh',
   );
   sw.offline();
-  assert.equal(
-    await (await sw.request('/chesscape/icon-192.png'))?.text(),
-    'cached',
-  );
+  assert.equal(await (await sw.request('/icon-192.png'))?.text(), 'cached');
 });
 
 void test('service worker cache cleanup preserves other applications and mounts', async () => {

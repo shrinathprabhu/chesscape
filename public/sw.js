@@ -1,18 +1,16 @@
 /* Solutions stay in page memory; cache only the app shell and static assets. */
-const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, '');
-const VERSION = `chesscape-shell-v4-${BASE || 'root'}`;
-const scoped = (path) => `${BASE}${path}`;
+const VERSION = 'chesscape-shell-v5-root';
 const SHELL = [
-  scoped('/'),
-  scoped('/favicon.svg'),
-  scoped('/icon-192.png'),
-  scoped('/icon-512.png'),
-  scoped('/icon-maskable-512.png'),
-  scoped('/apple-touch-icon.png'),
-  scoped('/manifest.webmanifest'),
+  '/',
+  '/favicon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-512.png',
+  '/apple-touch-icon.png',
+  '/manifest.webmanifest',
   ...['w', 'b'].flatMap((color) =>
-    ['K', 'Q', 'R', 'B', 'N', 'P'].map((piece) =>
-      scoped(`/pieces/${color}${piece}.svg`),
+    ['K', 'Q', 'R', 'B', 'N', 'P'].map(
+      (piece) => `/pieces/${color}${piece}.svg`,
     ),
   ),
 ];
@@ -29,7 +27,7 @@ self.addEventListener('activate', (event) => {
             .filter(
               (key) =>
                 key.startsWith('chesscape-shell-') &&
-                key.endsWith(`-${BASE || 'root'}`) &&
+                key.endsWith('-root') &&
                 key !== VERSION,
             )
             .map((key) => caches.delete(key)),
@@ -44,17 +42,14 @@ self.addEventListener('fetch', (event) => {
   if (
     request.method !== 'GET' ||
     url.origin !== self.location.origin ||
-    !url.pathname.startsWith(scoped('/')) ||
-    url.pathname.startsWith(scoped('/api/')) ||
-    url.pathname.startsWith(scoped('/__')) ||
+    !url.pathname.startsWith('/') ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/__') ||
     url.search
   )
     return;
   // Never replace the cached game document with a Markdown guide or another route.
-  if (
-    request.mode === 'navigate' &&
-    (url.pathname === scoped('/') || url.pathname === BASE)
-  ) {
+  if (request.mode === 'navigate' && url.pathname === '/') {
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -64,16 +59,14 @@ self.addEventListener('fetch', (event) => {
           ) {
             const copy = response.clone();
             event.waitUntil(
-              caches
-                .open(VERSION)
-                .then((cache) => cache.put(scoped('/'), copy)),
+              caches.open(VERSION).then((cache) => cache.put('/', copy)),
             );
           }
           return response;
         })
         .catch(
           async () =>
-            (await caches.match(scoped('/'))) ||
+            (await caches.match('/')) ||
             new Response('Reconnect to open your daily escape.', {
               status: 503,
               headers: { 'Content-Type': 'text/plain' },
@@ -83,7 +76,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (
-    url.pathname === scoped('/sw.js') ||
+    url.pathname === '/sw.js' ||
     !/\.(?:js|css|svg|png|webp|webmanifest|woff2?)$/.test(url.pathname)
   )
     return;
@@ -102,7 +95,7 @@ self.addEventListener('fetch', (event) => {
   };
   // Only content-hashed bundles/fonts are immutable. Icons, pieces and the
   // install manifest check the network so an update cannot stay cached forever.
-  const hashed = url.pathname.startsWith(scoped('/_next/static/'));
+  const hashed = url.pathname.startsWith('/_next/static/');
   event.respondWith(
     hashed
       ? caches.match(request).then((cached) => cached || update())

@@ -1,7 +1,6 @@
 export const noStore = {
   'Cache-Control': 'no-store',
   'CDN-Cache-Control': 'no-store',
-  'Vercel-CDN-Cache-Control': 'no-store',
 };
 
 export function puzzleCacheHeaders(expiresAt: number, now = Date.now()) {
@@ -15,6 +14,5 @@ export function puzzleCacheHeaders(expiresAt: number, now = Date.now()) {
     // CDN-specific headers intentionally permit only shared edge storage.
     'Cache-Control': 'no-store',
     'CDN-Cache-Control': cdn,
-    'Vercel-CDN-Cache-Control': cdn,
   };
 }

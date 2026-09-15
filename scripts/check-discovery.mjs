@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 const origin = process.env.CHESSCAPE_CHECK_ORIGIN ?? 'http://localhost:3001';
-const mount = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
-const prefix = origin + mount;
+const prefix = origin;
 const auth = process.env.CC_SITES_INSPECTION_TOKEN;
 const headers = auth ? { 'OAI-Sites-Authorization': `Bearer ${auth}` } : {};
 async function get(path) {
@@ -15,13 +14,27 @@ async function get(path) {
 const page = await get('/');
 assert.equal(
   new URL(page.url).pathname,
-  mount + '/',
+  '/',
   'The install start URL must stay inside its scope',
 );
 const html = await page.text();
 assert.match(
   html,
-  /<link[^>]*rel="canonical"[^>]*href="https:\/\/lowkey\.tools\/chesscape"/,
+  /property="og:image"[^>]*content="https:\/\/chesscape\.lowkey\.tools\/og.png"/,
+);
+assert.match(html, /name="twitter:card"[^>]*content="summary_large_image"/);
+assert.match(
+  html,
+  /name="twitter:image"[^>]*content="https:\/\/chesscape\.lowkey\.tools\/og.png"/,
+);
+const socialImage = await get('/og.png');
+assert.match(socialImage.headers.get('content-type') ?? '', /image\/png/);
+const socialBytes = Buffer.from(await socialImage.arrayBuffer());
+assert.equal(socialBytes.readUInt32BE(16), 1730);
+assert.equal(socialBytes.readUInt32BE(20), 909);
+assert.match(
+  html,
+  /<link[^>]*rel="canonical"[^>]*href="https:\/\/chesscape\.lowkey\.tools\/"/,
 );
 assert.match(html, /<meta[^>]*name="viewport"[^>]*device-width/);
 assert.ok(!html.includes('user-scalable=no'));
@@ -38,7 +51,7 @@ const data = JSON.parse(json);
 assert.ok(data['@graph'].some((node) => node['@type'] === 'FAQPage'));
 assert.ok(
   data['@graph'].some(
-    (node) => node['@id'] === 'https://lowkey.tools/chesscape#game',
+    (node) => node['@id'] === 'https://chesscape.lowkey.tools/#game',
   ),
 );
 const manifestResponse = await get('/manifest.webmanifest');
@@ -47,11 +60,11 @@ assert.match(
   /application\/manifest\+json/,
 );
 const manifest = await manifestResponse.json();
-assert.equal(manifest.start_url, mount + '/');
-assert.equal(manifest.scope, mount + '/');
+assert.equal(manifest.start_url, '/');
+assert.equal(manifest.scope, '/');
 for (const icon of manifest.icons) {
-  assert.ok(icon.src.startsWith(mount + '/'));
-  const response = await get(icon.src.slice(mount.length));
+  assert.ok(icon.src.startsWith('/'));
+  const response = await get(icon.src);
   assert.match(response.headers.get('content-type'), /image\/png/);
 }
 const resources = await Promise.all(
@@ -62,7 +75,7 @@ const resources = await Promise.all(
 for (const { path, response } of resources) {
   const body = await response.text();
   assert.ok(
-    body.includes('https://lowkey.tools/chesscape'),
+    body.includes('https://chesscape.lowkey.tools'),
     `${path} uses canonical URLs`,
   );
   assert.ok(!response.headers.get('content-type').includes('text/html'));
@@ -80,12 +93,12 @@ assert.match(api.headers.get('x-robots-tag') ?? '', /noindex/);
 assert.ok((await api.json()).solutions.length > 0);
 for (const path of ['/pieces/wN.svg', '/apple-touch-icon.png']) await get(path);
 assert.ok(
-  html.includes(`src="${mount}/pieces/wN.svg"`),
-  'Piece assets honor the mount path',
+  html.includes(`src="/pieces/wN.svg"`),
+  'Piece assets are root-relative',
 );
 assert.ok(
-  html.includes(`href="${mount}/manifest.webmanifest"`),
-  'Manifest link honors the mount path',
+  html.includes(`href="/manifest.webmanifest"`),
+  'Manifest link is root-relative',
 );
 console.log(
   `Discovery checks passed for ${prefix || origin}: server-rendered metadata, FAQ, JSON-LD, canonical, crawl files, scoped manifest, icons, assets and API index exclusion.`,

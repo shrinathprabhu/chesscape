@@ -1608,6 +1608,33 @@ fieldset.chessboard {
   flex-wrap: wrap;
   font-size: 14px;
 }
+.off-board-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 24px;
+}
+.off-board-grid article {
+  border-left: 2px solid var(--border);
+  padding: 8px 22px;
+}
+.off-board-grid a,
+.more-lowkey {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.more-lowkey {
+  margin-top: 20px;
+}
+@media (max-width: 640px) {
+  .off-board-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .discovery-links a {
   min-height: 44px;
   display: inline-flex;

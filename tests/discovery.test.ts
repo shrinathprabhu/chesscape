@@ -12,7 +12,7 @@ import {
   llmsText,
   guideMarkdown,
 } from '../lib/discovery';
-import { CANONICAL_URL, appPath } from '../lib/site';
+import { CANONICAL_URL } from '../lib/site';
 import { GET as manifest } from '../app/manifest.webmanifest/route';
 
 void test('FAQ structured data matches the crawlable answers and retains both creator links', () => {
@@ -33,18 +33,27 @@ void test('FAQ structured data matches the crawlable answers and retains both cr
   }
   assert.match(html, /href="https:\/\/shrinath\.me"/);
   assert.match(html, /href="https:\/\/owleye\.dev"/);
+  for (const url of [
+    'https://lowkey.tools',
+    'https://x.com/shrinath_prabhu',
+    'https://lowkey.tools/superbrain',
+  ])
+    assert.ok(
+      html.includes(`href="${url}"`),
+      `Missing credit or recommendation: ${url}`,
+    );
   const encoded = JSON.stringify(structuredData);
   assert.ok(!encoded.includes('aggregateRating'));
   assert.ok(!encoded.includes('reviewCount'));
 });
 void test('discovery URLs consolidate on the requested canonical and crawler rules allow rendering assets', () => {
-  assert.equal(CANONICAL_URL, 'https://lowkey.tools/chesscape');
+  assert.equal(CANONICAL_URL, 'https://chesscape.lowkey.tools/');
   assert.equal((sitemapXml.match(/<loc>/g) ?? []).length, 1);
   assert.ok(sitemapXml.includes(`<loc>${CANONICAL_URL}</loc>`));
-  assert.ok(robotsText.includes(`Sitemap: ${CANONICAL_URL}/sitemap.xml`));
-  assert.ok(robotsText.includes(`Disallow: ${appPath('/api/')}`));
+  assert.ok(robotsText.includes(`Sitemap: ${CANONICAL_URL}sitemap.xml`));
+  assert.ok(robotsText.includes(`Disallow: ${'/api/'}`));
   assert.ok(!robotsText.includes('Disallow: /_next'));
-  assert.ok(llmsText.includes(`${CANONICAL_URL}/index.md`));
+  assert.ok(llmsText.includes(`${CANONICAL_URL}index.md`));
   assert.ok(llmsText.includes('https://owleye.dev'));
   assert.ok(llmsText.includes('https://shrinath.me'));
 });
@@ -60,11 +69,11 @@ void test('install manifest is scoped to the app and every declared PNG exists a
     orientation: string;
     icons: { src: string; sizes: string; purpose: string }[];
   };
-  assert.equal(data.start_url, appPath('/'));
-  assert.equal(data.scope, appPath('/'));
+  assert.equal(data.start_url, '/');
+  assert.equal(data.scope, '/');
   assert.equal(data.orientation, 'any');
   for (const icon of data.icons) {
-    const path = icon.src.slice(appPath('/').length);
+    const path = icon.src.slice('/'.length);
     const bytes = readFileSync(`public/${path}`);
     const size = Number(icon.sizes.split('x')[0]);
     assert.equal(bytes.readUInt32BE(16), size);

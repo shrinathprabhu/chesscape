@@ -15,9 +15,13 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "icons": "node scripts/generate-icons.mjs",
-    "config:vercel": "node scripts/generate-vercel-config.mjs",
     "check:http": "node scripts/check-http.mjs",
-    "verify:archive": "node scripts/verify-release-archive.mjs"
+    "verify:archive": "node scripts/verify-release-archive.mjs",
+    "build:workers": "npm run build",
+    "preview:workers": "npm run start",
+    "deploy:workers": "npm run build:workers && wrangler deploy --config dist/server/wrangler.json",
+    "build:workers:preview": "CLOUDFLARE_ENV=preview npm run build",
+    "deploy:workers:preview": "npm run build:workers:preview && wrangler deploy --config dist/server/wrangler.json"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

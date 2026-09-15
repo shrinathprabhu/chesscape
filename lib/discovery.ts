@@ -1,4 +1,4 @@
-import { appPath, CANONICAL_URL, SITE_DESCRIPTION, SITE_TITLE } from './site';
+import { CANONICAL_URL, SITE_DESCRIPTION, SITE_TITLE } from './site';
 
 export const faqs = [
   {
@@ -63,6 +63,7 @@ export const structuredData = {
       '@id': 'https://shrinath.me/#person',
       name: 'Shrinath Prabhu',
       url: 'https://shrinath.me',
+      sameAs: ['https://x.com/shrinath_prabhu'],
       subjectOf: { '@id': `${CANONICAL_URL}#webpage` },
     },
     {
@@ -80,13 +81,33 @@ export const structuredData = {
       publisher: { '@id': 'https://lowkey.tools/#organization' },
     },
     {
+      '@type': 'WebSite',
+      '@id': `${CANONICAL_URL}#website`,
+      name: 'Chesscape',
+      url: CANONICAL_URL,
+      description: SITE_DESCRIPTION,
+      inLanguage: 'en',
+      publisher: { '@id': 'https://lowkey.tools/#organization' },
+      isPartOf: { '@id': 'https://lowkey.tools/#website' },
+    },
+    {
+      '@type': 'ImageObject',
+      '@id': `${CANONICAL_URL}#social-image`,
+      url: `${CANONICAL_URL}og.png`,
+      contentUrl: `${CANONICAL_URL}og.png`,
+      width: 1730,
+      height: 909,
+      caption: 'Chesscape — find your escape in thirty seconds.',
+    },
+    {
       '@type': 'WebPage',
       '@id': `${CANONICAL_URL}#webpage`,
       url: CANONICAL_URL,
       name: SITE_TITLE,
       description: SITE_DESCRIPTION,
       inLanguage: 'en',
-      isPartOf: { '@id': 'https://lowkey.tools/#website' },
+      isPartOf: { '@id': `${CANONICAL_URL}#website` },
+      primaryImageOfPage: { '@id': `${CANONICAL_URL}#social-image` },
       mainEntity: { '@id': `${CANONICAL_URL}#game` },
       author: { '@id': 'https://shrinath.me/#person' },
       hasPart: { '@id': `${CANONICAL_URL}#faq` },
@@ -110,7 +131,7 @@ export const structuredData = {
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       creator: { '@id': 'https://shrinath.me/#person' },
       publisher: { '@id': 'https://lowkey.tools/#organization' },
-      image: `${CANONICAL_URL}/icon-512.png`,
+      image: `${CANONICAL_URL}icon-512.png`,
     },
     {
       '@type': 'SoftwareApplication',
@@ -125,6 +146,8 @@ export const structuredData = {
     {
       '@type': 'FAQPage',
       '@id': `${CANONICAL_URL}#faq`,
+      url: `${CANONICAL_URL}#faq`,
+      isPartOf: { '@id': `${CANONICAL_URL}#webpage` },
       mainEntity: faqs.map((faq) => ({
         '@type': 'Question',
         name: faq.question,
@@ -133,7 +156,7 @@ export const structuredData = {
     },
   ],
 };
-export const robotsText = `User-agent: *\nAllow: /\nDisallow: ${appPath('/api/')}\nDisallow: ${appPath('/__')}\n\nSitemap: ${CANONICAL_URL}/sitemap.xml\n`;
+export const robotsText = `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /__\n\nSitemap: ${CANONICAL_URL}sitemap.xml\n`;
 export const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${CANONICAL_URL}</loc></url></urlset>\n`;
-export const llmsText = `# Chesscape\n\n> A free daily chess escape puzzle by Shrinath Prabhu, part of lowkey.tools and from the creator of OwlEye Analytics.\n\nFind one of 1–2 moves that avoids immediate checkmate within 30 seconds. Retry the same puzzle until solved, then return after the following midnight UTC. Progress is local to one browser. A loaded puzzle works offline in the active tab; reopening or fetching another puzzle needs a connection.\n\n## Game and rules\n- [Chesscape](${CANONICAL_URL}): Canonical game page, instructions, puzzle sources and FAQs.\n- [Chesscape guide in Markdown](${CANONICAL_URL}/index.md): Complete rules, retry and reset behavior, mobile use, privacy and creator attribution.\n\n## Creator and related products\n- [Shrinath Prabhu](${'https://shrinath.me'}): Creator of Chesscape and OwlEye Analytics; portfolio and engineering work.\n- [OwlEye Analytics](https://owleye.dev): Hosted, cookie-free web analytics for founders and product teams.\n- [Lowkey Tools](https://lowkey.tools): The collection of small browser tools that includes Chesscape.\n`;
-export const guideMarkdown = `# Chesscape — Daily Chess Escape Puzzle\n\n${SITE_DESCRIPTION}\n\nCanonical page: ${CANONICAL_URL}\n\n## Questions and answers\n\n${faqs.map((faq) => `### ${faq.question}\n\n${faq.answer}${faq.links ? '\n\n' + faq.links.map((link) => `[${link.label}](${link.url})`).join(' · ') : ''}`).join('\n\n')}\n\n## From the creator\n\nMade by [Shrinath Prabhu](https://shrinath.me), creator of [OwlEye Analytics](https://owleye.dev). OwlEye provides hosted, cookie-free web analytics for founders and product teams. Explore more small browser tools at [lowkey.tools](https://lowkey.tools).\n`;
+export const llmsText = `# Chesscape\n\n> A free daily chess escape puzzle by Shrinath Prabhu, part of lowkey.tools and from the creator of OwlEye Analytics.\n\nFind one of 1–2 moves that avoids immediate checkmate within 30 seconds. Retry the same puzzle until solved, then return after the following midnight UTC. Progress is local to one browser. A loaded puzzle works offline in the active tab; reopening or fetching another puzzle needs a connection.\n\nCanonical site: ${CANONICAL_URL}\n\n## Game and rules\n- [Chesscape](${CANONICAL_URL}): Canonical game page, instructions, puzzle sources and FAQs.\n- [Chesscape guide in Markdown](${CANONICAL_URL}index.md): Complete rules, retry and reset behavior, mobile use, privacy and creator attribution.\n- [Sitemap](${CANONICAL_URL}sitemap.xml): Canonical indexable page.\n\n## More from Lowkey\n- [SuperBrain](https://lowkey.tools/superbrain): Save notes, links and ideas in a private, local-first notebook.\n\n## Creator and related products\n- [Shrinath Prabhu](${'https://shrinath.me'}): Creator of Chesscape and OwlEye Analytics; portfolio and engineering work.\n- [OwlEye Analytics](https://owleye.dev): Hosted, cookie-free web analytics for founders and product teams.\n- [Lowkey Tools](https://lowkey.tools): The collection of small browser tools that includes Chesscape.\n`;
+export const guideMarkdown = `# Chesscape — Daily Chess Escape Puzzle\n\n${SITE_DESCRIPTION}\n\nCanonical page: ${CANONICAL_URL}\n\n## Questions and answers\n\n${faqs.map((faq) => `### ${faq.question}\n\n${faq.answer}${faq.links ? '\n\n' + faq.links.map((link) => `[${link.label}](${link.url})`).join(' · ') : ''}`).join('\n\n')}\n\n## From the creator\n\nMade by [Shrinath Prabhu](https://shrinath.me), creator of [OwlEye Analytics](https://owleye.dev). OwlEye provides hosted, cookie-free web analytics for founders and product teams. Explore more small browser tools at [lowkey.tools](https://lowkey.tools). Follow [@shrinath_prabhu](https://x.com/shrinath_prabhu) on X.\n\n## Good moves, off the board\n\nSave the idea behind your escape in [SuperBrain](https://lowkey.tools/superbrain), a private, local-first notebook.\n`;

@@ -10,7 +10,6 @@ void test('daily edge caching expires at UTC midnight without storing answers in
     result['CDN-Cache-Control'],
     'public, max-age=1, must-revalidate',
   );
-  assert.equal(result['Vercel-CDN-Cache-Control'], result['CDN-Cache-Control']);
   for (const now of [midnight - 999, midnight, midnight + 3000])
     assert.deepEqual(puzzleCacheHeaders(midnight, now), noStore);
   assert.deepEqual(puzzleCacheHeaders(NaN), noStore);

@@ -44,7 +44,6 @@ import {
   saveProgress,
 } from '@/lib/local-game';
 import { createShareImage, downloadBlob, shareText } from '@/lib/share';
-import { appPath } from '@/lib/site';
 import type { Attempt, DailyChallenge, LocalProgress } from '@/lib/contracts';
 
 type InstallEvent = Event & {
@@ -268,7 +267,7 @@ export default function ChesscapeGame({
     window.addEventListener('appinstalled', complete);
     if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator)
       void navigator.serviceWorker
-        .register(appPath('/sw.js'), { scope: appPath('/') })
+        .register('/sw.js', { scope: '/' })
         .catch(() => {});
     return () => {
       window.removeEventListener('online', onOnline);
@@ -677,9 +676,7 @@ export default function ChesscapeGame({
                 <img
                   alt=""
                   draggable={false}
-                  src={appPath(
-                    `/pieces/${piece.color}${piece.type.toUpperCase()}.svg`,
-                  )}
+                  src={`/pieces/${piece.color}${piece.type.toUpperCase()}.svg`}
                   width={45}
                   height={45}
                 />
@@ -726,12 +723,7 @@ export default function ChesscapeGame({
       <header className="site-header">
         <Link href="/" className="brand" aria-label="Chesscape home">
           <span className="brand-mark">
-            <img
-              src={appPath('/pieces/wN.svg')}
-              width={35}
-              height={35}
-              alt=""
-            />
+            <img src={'/pieces/wN.svg'} width={35} height={35} alt="" />
           </span>
           chesscape<span className="brand-period">.</span>
         </Link>
@@ -1133,14 +1125,14 @@ export default function ChesscapeGame({
       </main>
       <footer>
         <span>
-          A small escape by{' '}
+          A small move from{' '}
           <a href="https://lowkey.tools" target="_blank" rel="noreferrer">
             lowkey.tools <ArrowUpRight size={12} />
           </a>
         </span>
         <span className="creator-credit">
           <span>
-            Made by{' '}
+            Your daily escape, by{' '}
             <a
               href="https://shrinath.me"
               target="_blank"
@@ -1153,7 +1145,7 @@ export default function ChesscapeGame({
             ·
           </span>
           <span>
-            Creator of{' '}
+            Also behind{' '}
             <a
               href="https://owleye.dev"
               target="_blank"
@@ -1420,7 +1412,7 @@ export default function ChesscapeGame({
                 }}
               >
                 <img
-                  src={appPath(`/pieces/${game.turn()}${p.toUpperCase()}.svg`)}
+                  src={`/pieces/${game.turn()}${p.toUpperCase()}.svg`}
                   width={55}
                   height={55}
                   alt=""

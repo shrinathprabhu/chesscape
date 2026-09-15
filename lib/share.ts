@@ -1,8 +1,8 @@
 import { Chess } from 'chess.js';
 import type { Attempt } from './contracts';
-import { appPath } from './site';
+import { CANONICAL_URL } from './site';
 export const shareText = (attempt: Attempt, number: number) =>
-  `Solved ${attempt.day === new Date(attempt.updatedAt).toISOString().slice(0, 10) ? "today's" : 'my'} Chesscape within ${((attempt.elapsedMs ?? 0) / 1000).toFixed(2)} seconds. ♟\nChesscape No. ${String(number).padStart(3, '0')} · ${attempt.day}\nFind your escape → https://lowkey.tools/chesscape`;
+  `Solved ${attempt.day === new Date(attempt.updatedAt).toISOString().slice(0, 10) ? "today's" : 'my'} Chesscape within ${((attempt.elapsedMs ?? 0) / 1000).toFixed(2)} seconds. ♟\nChesscape No. ${String(number).padStart(3, '0')} · ${attempt.day}\nFind your escape → ${CANONICAL_URL}`;
 export async function createShareImage(
   attempt: Attempt,
   number: number,
@@ -43,7 +43,7 @@ export async function createShareImage(
       ),
     ].map(async (key) => {
       const img = new Image();
-      img.src = appPath(`/pieces/${key}.svg`);
+      img.src = `/pieces/${key}.svg`;
       await img.decode();
       images.set(key, img);
     }),
@@ -74,7 +74,7 @@ export async function createShareImage(
   ctx.fillText('One position. Thirty seconds. Your move.', 500, 1192);
   ctx.fillStyle = '#849078';
   ctx.font = '18px "Play", Arial, sans-serif';
-  ctx.fillText('lowkey.tools/chesscape', 500, 1230);
+  ctx.fillText('chesscape.lowkey.tools', 500, 1230);
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) =>

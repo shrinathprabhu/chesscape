@@ -1,4 +1,4 @@
-// Shared by the Worker/framework and the generated Vercel host rules.
+// Shared by the Worker/framework and generated Cloudflare asset headers.
 export function securityHeaders(development = false) {
   const csp = [
     "default-src 'self'",
@@ -43,7 +43,6 @@ export const staticCache = 'public, max-age=3600, must-revalidate';
 export const noStoreHeaders = [
   { key: 'Cache-Control', value: 'no-store' },
   { key: 'CDN-Cache-Control', value: 'no-store' },
-  { key: 'Vercel-CDN-Cache-Control', value: 'no-store' },
 ];
 
 export function routeHeaders(development = false) {
@@ -80,6 +79,7 @@ export function routeHeaders(development = false) {
       '/icon-512.png',
       '/icon-maskable-512.png',
       '/apple-touch-icon.png',
+      '/og.png',
     ].map((source) => ({
       source,
       headers: [{ key: 'Cache-Control', value: staticCache }],

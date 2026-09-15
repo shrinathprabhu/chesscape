@@ -77,8 +77,19 @@ export default function DiscoveryContent() {
         className="creators-section"
       >
         <div>
-          <p className="eyebrow">FROM THE LOWKEY FAMILY</p>
-          <h2 id="creators-heading">Small tools. Thoughtfully made.</h2>
+          <p className="eyebrow">THE PEOPLE BEHIND THE POSITION</p>
+          <h2 id="creators-heading">Your king has a whole team behind it.</h2>
+          <p>
+            Chesscape is part of{' '}
+            <a
+              href="https://lowkey.tools"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              lowkey.tools
+            </a>{' '}
+            — small browser tools for the rest of your day.
+          </p>
         </div>
         <article>
           <h3>Made by Shrinath Prabhu</h3>
@@ -93,9 +104,18 @@ export default function DiscoveryContent() {
           >
             Meet Shrinath Prabhu <span aria-hidden="true">↗</span>
           </a>
+          <p>
+            <a
+              href="https://x.com/shrinath_prabhu"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Follow @shrinath_prabhu on X <span aria-hidden="true">↗</span>
+            </a>
+          </p>
         </article>
         <article>
-          <h3>Discover OwlEye Analytics</h3>
+          <h3>From the maker of OwlEye Analytics</h3>
           <p>
             Building a website of your own? OwlEye is Shrinath’s hosted,
             cookie-free web analytics product for founders and product teams.
@@ -108,6 +128,41 @@ export default function DiscoveryContent() {
             Explore OwlEye Analytics <span aria-hidden="true">↗</span>
           </a>
         </article>
+      </section>
+      <section
+        className="off-board-section"
+        aria-labelledby="off-board-heading"
+      >
+        <div className="off-board-heading">
+          <p className="eyebrow">YOUR NEXT MOVE</p>
+          <h2 id="off-board-heading">Good moves, off the board.</h2>
+          <p>Keep the insight after the clock stops.</p>
+        </div>
+        <div className="off-board-grid">
+          <article>
+            <h3>That escape deserves a note.</h3>
+            <p>
+              A clever line, a useful link, a half-formed idea. Give it a home
+              in SuperBrain, your private, local-first notebook.
+            </p>
+            <a
+              href="https://lowkey.tools/superbrain"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Save the thought in SuperBrain <span aria-hidden="true">↗</span>
+            </a>
+          </article>
+        </div>
+        <a
+          className="more-lowkey"
+          href="https://lowkey.tools"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          There’s more beyond the board. Explore lowkey.tools{' '}
+          <span aria-hidden="true">↗</span>
+        </a>
       </section>
       <nav className="discovery-links" aria-label="Site information">
         <a href="#main-content">Back to the chess puzzle ↑</a>

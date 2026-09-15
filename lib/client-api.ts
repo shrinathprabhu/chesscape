@@ -1,8 +1,7 @@
 import type { PuzzlePayload } from './contracts';
-import { appPath } from './site';
 export async function getChallenge(day?: string): Promise<PuzzlePayload> {
   const response = await fetch(
-    appPath('/api/daily') + (day ? '?day=' + encodeURIComponent(day) : ''),
+    '/api/daily' + (day ? '?day=' + encodeURIComponent(day) : ''),
     {
       credentials: 'same-origin',
       cache: 'no-store',

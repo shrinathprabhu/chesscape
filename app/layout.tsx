@@ -1,15 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import '@fontsource/play/latin-400.css';
 import '@fontsource/play/latin-700.css';
-import {
-  appPath,
-  CANONICAL_URL,
-  SITE_DESCRIPTION,
-  SITE_TITLE,
-} from '@/lib/site';
+import { CANONICAL_URL, SITE_DESCRIPTION, SITE_TITLE } from '@/lib/site';
 import './globals.css';
 export const metadata: Metadata = {
-  metadataBase: new URL(CANONICAL_URL + '/'),
+  metadataBase: new URL(CANONICAL_URL),
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
   applicationName: 'Chesscape',
@@ -29,13 +24,13 @@ export const metadata: Metadata = {
       'max-video-preview': -1,
     },
   },
-  manifest: appPath('/manifest.webmanifest'),
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: [
-      { url: appPath('/favicon.svg'), type: 'image/svg+xml' },
-      { url: appPath('/icon-192.png'), sizes: '192x192', type: 'image/png' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
     ],
-    apple: { url: appPath('/apple-touch-icon.png'), sizes: '180x180' },
+    apple: { url: '/apple-touch-icon.png', sizes: '180x180' },
   },
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Chesscape' },
   openGraph: {
@@ -45,11 +40,27 @@ export const metadata: Metadata = {
     siteName: 'Chesscape',
     locale: 'en_US',
     type: 'website',
+    images: [
+      {
+        url: `${CANONICAL_URL}og.png`,
+        width: 1730,
+        height: 909,
+        type: 'image/png',
+        alt: 'Chesscape. Find your escape. One position. Thirty seconds. Your move. An ivory king on a green chessboard.',
+      },
+    ],
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
+    creator: '@shrinath_prabhu',
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: `${CANONICAL_URL}og.png`,
+        alt: 'Chesscape — find your escape in thirty seconds.',
+      },
+    ],
   },
 };
 export const viewport: Viewport = {
@@ -65,16 +76,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link
-          rel="sitemap"
-          type="application/xml"
-          href={appPath('/sitemap.xml')}
-        />
-        <link rel="describedby" type="text/plain" href={appPath('/llms.txt')} />
+        <link rel="sitemap" type="application/xml" href={'/sitemap.xml'} />
+        <link rel="describedby" type="text/plain" href={'/llms.txt'} />
         <link
           rel="alternate"
           type="text/markdown"
-          href={appPath('/index.md')}
+          href={'/index.md'}
           title="Chesscape rules and FAQ in Markdown"
         />
       </head>

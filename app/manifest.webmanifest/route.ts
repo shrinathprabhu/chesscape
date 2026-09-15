@@ -1,34 +1,34 @@
-import { appPath, SITE_DESCRIPTION } from '@/lib/site';
+import { SITE_DESCRIPTION } from '@/lib/site';
 export function GET() {
   return Response.json(
     {
-      id: appPath('/'),
+      id: '/',
       name: 'Chesscape — Daily Chess Escape',
       short_name: 'Chesscape',
       description: SITE_DESCRIPTION,
       lang: 'en',
       dir: 'ltr',
-      start_url: appPath('/'),
-      scope: appPath('/'),
+      start_url: '/',
+      scope: '/',
       display: 'standalone',
       background_color: '#f7f8f2',
       theme_color: '#f7f8f2',
       orientation: 'any',
       icons: [
         {
-          src: appPath('/icon-192.png'),
+          src: '/icon-192.png',
           sizes: '192x192',
           type: 'image/png',
           purpose: 'any',
         },
         {
-          src: appPath('/icon-512.png'),
+          src: '/icon-512.png',
           sizes: '512x512',
           type: 'image/png',
           purpose: 'any',
         },
         {
-          src: appPath('/icon-maskable-512.png'),
+          src: '/icon-maskable-512.png',
           sizes: '512x512',
           type: 'image/png',
           purpose: 'maskable',
@@ -39,8 +39,8 @@ export function GET() {
         {
           name: 'Play your daily escape',
           short_name: 'Play',
-          url: appPath('/'),
-          icons: [{ src: appPath('/icon-192.png'), sizes: '192x192' }],
+          url: '/',
+          icons: [{ src: '/icon-192.png', sizes: '192x192' }],
         },
       ],
     },
