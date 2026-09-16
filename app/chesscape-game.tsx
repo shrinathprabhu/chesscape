@@ -54,7 +54,7 @@ import {
   shareText,
   winShareText,
 } from '@/lib/share';
-import { ENGINE_DEPTH, chooseMove } from '@/lib/engine';
+import { ENGINE_DEPTH } from '@/lib/engine';
 import {
   bestWin,
   createWinGame,
@@ -134,6 +134,8 @@ export default function ChesscapeGame({
   const [mode, setMode] = useState<Mode>('escape');
   const [winProgress, setWinProgress] = useState<WinProgress>(emptyWinProgress);
   const [clockNow, setClockNow] = useState(0);
+  const [engineError, setEngineError] = useState(false);
+  const [engineRetry, setEngineRetry] = useState(0);
   const [shareKind, setShareKind] = useState<Mode>('escape');
   const winRef = useRef<WinProgress>(emptyWinProgress());
   const deadline = useRef(0);
@@ -146,6 +148,26 @@ export default function ChesscapeGame({
   const [shareBlob, setShareBlob] = useState<Blob | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
   const boardRef = useRef<HTMLFieldSetElement | null>(null);
+  const engineWorker = useRef<Worker | null>(null);
+  useEffect(() => {
+    try {
+      const worker = new Worker(
+        new URL('../lib/engine.worker.ts', import.meta.url),
+        { type: 'module' },
+      );
+      engineWorker.current = worker;
+      worker.onerror = () => {
+        worker.terminate();
+        if (engineWorker.current === worker) engineWorker.current = null;
+      };
+    } catch {
+      /* The computer-turn effect provides a retry action. */
+    }
+    return () => {
+      engineWorker.current?.terminate();
+      engineWorker.current = null;
+    };
+  }, []);
 
   const playing = attempt?.status === 'playing';
   const done = !!attempt && !playing;
@@ -158,7 +180,7 @@ export default function ChesscapeGame({
   const winDone = !!win && !winPlaying;
   const winWon = win?.status === 'won';
   const computerTurn =
-    !!win && winPlaying && new Chess(win.fen).turn() !== win.side;
+    !!win && winPlaying && win.fen.split(' ')[1] !== win.side;
   const boardFen = winMode
     ? (win?.fen ?? (won ? daily?.fen : undefined))
     : attempt?.fen;
@@ -455,17 +477,64 @@ export default function ChesscapeGame({
   });
   useEffect(() => {
     if (!win || !computerTurn) return;
-    const timer = window.setTimeout(() => {
-      const current = winRef.current.game;
-      if (current?.id !== win.id || current.fen !== win.fen) return;
-      const reply = chooseMove(current.fen);
-      if (!reply) return;
-      const value = playComputerMove(current, reply);
-      acceptWin(value);
-      toneRef.current(value.status === 'lost' ? false : undefined);
-    }, COMPUTER_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [win, computerTurn, acceptWin]);
+    let cancelled = false;
+    let worker: Worker | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const started = performance.now();
+    const fail = () => {
+      if (!cancelled) setEngineError(true);
+      worker?.terminate();
+      engineWorker.current = null;
+    };
+    try {
+      worker =
+        engineWorker.current ??
+        new Worker(new URL('../lib/engine.worker.ts', import.meta.url), {
+          type: 'module',
+        });
+      engineWorker.current = worker;
+      worker.onerror = fail;
+      worker.onmessageerror = fail;
+      worker.onmessage = (
+        event: MessageEvent<{ fen: string; move?: string; error?: boolean }>,
+      ) => {
+        if (event.data.fen !== win.fen) return;
+        if (event.data.error || !event.data.move) {
+          fail();
+          return;
+        }
+        const reply = event.data.move;
+        timer = setTimeout(
+          () => {
+            const current = winRef.current.game;
+            if (
+              cancelled ||
+              current?.id !== win.id ||
+              current.fen !== win.fen ||
+              current.status !== 'playing'
+            )
+              return;
+            const value = playComputerMove(current, reply);
+            acceptWin(value);
+            toneRef.current(value.status === 'lost' ? false : undefined);
+          },
+          Math.max(0, COMPUTER_DELAY_MS - (performance.now() - started)),
+        );
+      };
+      worker.postMessage({ fen: win.fen });
+    } catch {
+      fail();
+    }
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (worker) {
+        worker.onmessage = null;
+        worker.onerror = null;
+        worker.onmessageerror = null;
+      }
+    };
+  }, [win, computerTurn, acceptWin, engineRetry]);
   function startWin() {
     const puzzle = dailyRef.current;
     const current = winRef.current.game;
@@ -1252,61 +1321,76 @@ export default function ChesscapeGame({
                 </button>
               </div>
             </div>
-            <div className="board-instruction" aria-live="polite">
-              {winMode ? (
-                winPlaying ? (
-                  computerTurn ? (
+            <div
+              className={`board-instruction ${(winMode && winDone) || (!winMode && done && !won) ? 'has-mobile-replay' : ''}`}
+            >
+              <span className="instruction-copy" aria-live="polite">
+                {winMode ? (
+                  winPlaying ? (
+                    computerTurn ? (
+                      <>
+                        The computer is choosing its move. Your clock is paused.
+                      </>
+                    ) : selected ? (
+                      <>Choose a highlighted square to make your move.</>
+                    ) : (
+                      <>Your clock is running. Find the fastest way to mate.</>
+                    )
+                  ) : winWon ? (
                     <>
-                      The computer is choosing its move. Your clock is paused.
+                      {playerMoveCount(win)} moves.{' '}
+                      <strong>{formatClock(win.elapsedMs)}</strong> on your
+                      clock.
                     </>
-                  ) : selected ? (
-                    <>Choose a highlighted square to make your move.</>
+                  ) : winDone ? (
+                    <>Same starting position. Your clock resets to 0:00.</>
+                  ) : won ? (
+                    <>No time limit. Just a clock that remembers.</>
                   ) : (
-                    <>Your clock is running. Find the fastest way to mate.</>
+                    <>Win mode opens once you solve today’s escape.</>
                   )
-                ) : winWon ? (
-                  <>
-                    {playerMoveCount(win)} moves.{' '}
-                    <strong>{formatClock(win.elapsedMs)}</strong> on your clock.
-                  </>
-                ) : winDone ? (
-                  <>Same starting position. Your clock resets to 0:00.</>
-                ) : won ? (
-                  <>No time limit. Just a clock that remembers.</>
-                ) : (
-                  <>Win mode opens once you solve today’s escape.</>
-                )
-              ) : playing ? (
-                selected ? (
-                  <>Choose a highlighted square to commit your move.</>
-                ) : (
-                  <>Click a piece, then its destination. Or drag to move.</>
-                )
-              ) : won ? (
-                <>
-                  {untilReset > 0 ? (
-                    <>
-                      Next escape in <strong>{resetClock}</strong>
-                    </>
+                ) : playing ? (
+                  selected ? (
+                    <>Choose a highlighted square to commit your move.</>
                   ) : (
-                    <button
-                      className="retry-link"
-                      disabled={busy || !online}
-                      onClick={() => void refresh(true)}
-                    >
-                      {busy
-                        ? 'Loading your next escape…'
-                        : online
-                          ? 'Load your next escape'
-                          : 'Reconnect for your next escape'}{' '}
-                      <RotateCw size={12} />
-                    </button>
-                  )}
-                </>
-              ) : done ? (
-                <>Same position. A fresh thirty seconds. Try another move.</>
-              ) : (
-                <>A small daily ritual. A very real ticking clock.</>
+                    <>Click a piece, then its destination. Or drag to move.</>
+                  )
+                ) : won ? (
+                  <>
+                    {untilReset > 0 ? (
+                      <>
+                        Next escape in <strong>{resetClock}</strong>
+                      </>
+                    ) : (
+                      <button
+                        className="retry-link"
+                        disabled={busy || !online}
+                        onClick={() => void refresh(true)}
+                      >
+                        {busy
+                          ? 'Loading your next escape…'
+                          : online
+                            ? 'Load your next escape'
+                            : 'Reconnect for your next escape'}{' '}
+                        <RotateCw size={12} />
+                      </button>
+                    )}
+                  </>
+                ) : done ? (
+                  <>Same position. A fresh thirty seconds. Try another move.</>
+                ) : (
+                  <>A small daily ritual. A very real ticking clock.</>
+                )}
+              </span>
+              {((winMode && winDone) || (!winMode && done && !won)) && (
+                <button
+                  className="primary-button mobile-board-replay"
+                  onClick={winMode ? startWin : start}
+                  disabled={busy}
+                >
+                  <RotateCw size={17} aria-hidden="true" />
+                  {winMode ? 'Play again' : 'Try again'}
+                </button>
               )}
             </div>
           </section>
@@ -1410,6 +1494,17 @@ export default function ChesscapeGame({
                 </div>
               ) : winPlaying ? (
                 <div className="win-actions">
+                  {computerTurn && engineError && (
+                    <button
+                      className="secondary-button wide"
+                      onClick={() => {
+                        setEngineError(false);
+                        setEngineRetry((value) => value + 1);
+                      }}
+                    >
+                      <RotateCw size={16} /> Retry computer move
+                    </button>
+                  )}
                   <button className="secondary-button wide" onClick={resignWin}>
                     <Flag size={16} /> Resign this game
                   </button>
@@ -1522,7 +1617,7 @@ export default function ChesscapeGame({
                 <div className="timer-track">
                   <div
                     style={{
-                      width: `${done ? (won ? 100 : 0) : remaining / 300}%`,
+                      transform: `scaleX(${done ? (won ? 1 : 0) : Math.max(0, Math.min(1, remaining / 30000))})`,
                     }}
                   />
                 </div>
@@ -1859,26 +1954,31 @@ export default function ChesscapeGame({
           )}
           {modal === 'share' && (
             <div className="share-content">
-              {shareBusy ? (
-                <div className="share-loading">
-                  <LoaderCircle className="spin" /> Preparing your escape card…
-                </div>
-              ) : shareUrl ? (
-                <img
-                  className="share-image"
-                  src={shareUrl}
-                  alt={
-                    shareKind === 'win'
-                      ? `Chesscape win in ${formatClock(win?.elapsedMs ?? 0)} with the final chessboard`
-                      : `Chesscape escape in ${seconds(attempt?.elapsedMs ?? 0)} seconds with the resulting chessboard`
-                  }
-                />
-              ) : (
-                <p>
-                  Your image couldn’t be created. You can still copy your
-                  result.
-                </p>
-              )}
+              <div className="share-preview">
+                {shareBusy ? (
+                  <div className="share-loading">
+                    <LoaderCircle className="spin" /> Preparing your escape
+                    card…
+                  </div>
+                ) : shareUrl ? (
+                  <img
+                    className="share-image"
+                    width={1000}
+                    height={1260}
+                    src={shareUrl}
+                    alt={
+                      shareKind === 'win'
+                        ? `Chesscape win in ${formatClock(win?.elapsedMs ?? 0)} with the final chessboard`
+                        : `Chesscape escape in ${seconds(attempt?.elapsedMs ?? 0)} seconds with the resulting chessboard`
+                    }
+                  />
+                ) : (
+                  <p>
+                    Your image couldn’t be created. You can still copy your
+                    result.
+                  </p>
+                )}
+              </div>
               <div className="share-buttons">
                 <button
                   className="primary-button"

@@ -471,7 +471,9 @@ svg {
   height: 100%;
   background: #91a673;
   border-radius: 2px;
-  transition: width 0.1s linear;
+  width: 100%;
+  transform-origin: left;
+  transition: transform 0.1s linear;
 }
 .timer-foot {
   display: flex;
@@ -1876,5 +1878,151 @@ summary {
 @media (prefers-reduced-motion: reduce) {
   .mode-tab {
     transition: none;
+  }
+}
+
+/* Stable geometry across ready, playing and result states. */
+@font-face {
+  font-family: 'Play';
+  font-style: normal;
+  font-weight: 400;
+  font-display: optional;
+  src: url('@fontsource/play/files/play-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Play';
+  font-style: normal;
+  font-weight: 700;
+  font-display: optional;
+  src: url('@fontsource/play/files/play-latin-700-normal.woff2') format('woff2');
+}
+html {
+  scrollbar-gutter: stable;
+}
+.site-shell {
+  width: 100%;
+  --content-width: 1054px;
+}
+.game-layout,
+.mode-switch,
+.under-game,
+.discovery-content {
+  width: 100%;
+  max-width: var(--content-width);
+}
+.board-column,
+.challenge-column {
+  min-width: 0;
+}
+.challenge-column > h2 {
+  min-height: 2.28em;
+}
+.challenge-description {
+  min-height: 5.1em;
+}
+.board-instruction {
+  min-height: 3.4em;
+}
+.timer-digits,
+.mobile-timer,
+.puzzle-number {
+  font-variant-numeric: tabular-nums;
+}
+.connection-banner {
+  position: fixed;
+  z-index: 70;
+  top: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(620px, calc(100% - 32px));
+}
+.share-modal {
+  max-width: 470px !important;
+}
+.share-preview {
+  width: 100%;
+  height: min(47dvh, 480px);
+  display: grid;
+  place-items: center;
+  margin: 8px auto 17px;
+}
+.share-image {
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+}
+.share-loading {
+  height: 100%;
+}
+.square,
+.secondary-button,
+.board-actions button,
+.install-button {
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+}
+.board-result,
+.start-card {
+  animation: panel-appear 160ms ease-out;
+}
+@keyframes panel-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 760px) {
+  .site-shell {
+    --content-width: 500px;
+  }
+  .challenge-column > h2 {
+    min-height: 2.28em;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Reserve the action region when rules become retry/share controls. */
+.challenge-column > .rules-compact,
+.challenge-column > .win-actions {
+  min-height: 132px;
+}
+.timer-foot {
+  min-height: 2.8em;
+  gap: 8px;
+}
+.challenge-tags {
+  min-height: 34px;
+  flex-wrap: wrap;
+}
+
+/* Keep replay within reach of the board without shifting its reserved footer. */
+.mobile-board-replay {
+  display: none;
+}
+@media (max-width: 760px) {
+  .board-instruction {
+    min-height: 52px;
+  }
+  .has-mobile-replay > .instruction-copy {
+    display: none;
+  }
+  .mobile-board-replay {
+    display: flex;
+    min-height: 44px;
   }
 }

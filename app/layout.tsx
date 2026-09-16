@@ -1,6 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import '@fontsource/play/latin-400.css';
-import '@fontsource/play/latin-700.css';
 import { CANONICAL_URL, SITE_DESCRIPTION, SITE_TITLE } from '@/lib/site';
 import './globals.css';
 export const metadata: Metadata = {
